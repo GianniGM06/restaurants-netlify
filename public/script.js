@@ -1,5 +1,282 @@
 /* ===== APPLICATION RESTAURANT AVEC NETLIFY FUNCTIONS ===== */
 
+// Nouveau service d'authentification GitHub
+class GitHubAuthService {
+    constructor() {
+        this.token = localStorage.getItem('github-token') || null;
+        this.isAuthenticated = false;
+    }
+
+    async authenticate(token) {
+        if (!token || token.trim() === '') {
+            throw new Error('Token GitHub requis');
+        }
+
+        try {
+            // Tester le token avec l'API GitHub
+            const response = await fetch('https://api.github.com/user', {
+                headers: {
+                    'Authorization': `token ${token.trim()}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error('Token GitHub invalide');
+                } else {
+                    throw new Error(`Erreur GitHub API: ${response.status}`);
+                }
+            }
+
+            const userData = await response.json();
+            
+            // Sauvegarder le token et les infos utilisateur
+            this.token = token.trim();
+            this.userInfo = userData;
+            this.isAuthenticated = true;
+            
+            localStorage.setItem('github-token', this.token);
+            
+            console.log('✅ Authentification GitHub réussie:', userData.login);
+            return userData;
+
+        } catch (error) {
+            this.logout();
+            throw error;
+        }
+    }
+
+    logout() {
+        this.token = null;
+        this.userInfo = null;
+        this.isAuthenticated = false;
+        localStorage.removeItem('github-token');
+        console.log('🔓 Déconnexion GitHub');
+    }
+
+    async checkStoredToken() {
+        if (this.token) {
+            try {
+                await this.authenticate(this.token);
+                return true;
+            } catch (error) {
+                console.log('⚠️ Token stocké invalide, déconnexion');
+                this.logout();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    getAuthHeaders() {
+        if (!this.isAuthenticated || !this.token) {
+            throw new Error('Non authentifié');
+        }
+        
+        return {
+            'Authorization': `token ${this.token}`,
+            'Accept': 'application/vnd.github.v3+json'
+        };
+    }
+}
+
+// Modifications à apporter au constructeur de RestaurantApp
+class RestaurantApp {
+    constructor() {
+        // Configuration de l'API (Netlify Functions)
+        this.apiBase = '/api';
+        
+        // Nouveau service d'authentification GitHub
+        this.githubAuth = new GitHubAuthService();
+        
+        // État de l'application
+        this.data = {
+            tested: [],
+            wishlist: [],
+            cuisineTypes: []
+        };
+        
+        // Mode édition basé sur l'authentification GitHub
+        this.isEditMode = false; // Par défaut en lecture
+        this.map = null;
+        
+        console.log('🚀 Application initialisée avec Neon Functions + GitHub Auth');
+    }
+
+    // Nouvelle méthode pour gérer l'authentification
+    async handleAuthentication() {
+        try {
+            // Vérifier si un token est déjà stocké
+            const hasValidToken = await this.githubAuth.checkStoredToken();
+            
+            if (hasValidToken) {
+                this.isEditMode = true;
+                this.updateAuthUI(true);
+                this.showToast('✅ Connecté via GitHub !', 'success');
+            } else {
+                this.isEditMode = false;
+                this.updateAuthUI(false);
+            }
+            
+        } catch (error) {
+            console.error('❌ Erreur vérification auth:', error);
+            this.isEditMode = false;
+            this.updateAuthUI(false);
+        }
+    }
+
+    updateAuthUI(isAuthenticated) {
+        // Afficher/masquer les boutons d'édition
+        const editElements = document.querySelectorAll('.edit-only');
+        editElements.forEach(el => {
+            el.style.display = isAuthenticated ? 'block' : 'none';
+        });
+
+        // Mettre à jour le badge de statut
+        const statusBadge = document.getElementById('status-badge');
+        if (statusBadge) {
+            if (isAuthenticated) {
+                statusBadge.className = 'badge bg-success fs-6';
+                statusBadge.textContent = `✅ ${this.githubAuth.userInfo.login}`;
+            } else {
+                statusBadge.className = 'badge bg-secondary fs-6';
+                statusBadge.textContent = '👀 Mode lecture';
+            }
+        }
+
+        // Mettre à jour l'indicateur dans la hero section
+        const modeIndicator = document.getElementById('mode-indicator');
+        if (modeIndicator) {
+            if (isAuthenticated) {
+                modeIndicator.className = 'alert alert-success d-inline-block';
+                modeIndicator.innerHTML = `
+                    <i class="bi bi-github"></i>
+                    <strong>Connecté :</strong> ${this.githubAuth.userInfo.login}
+                    <br><small>⚡ Mode édition activé - Données sur Neon DB</small>
+                `;
+            } else {
+                modeIndicator.className = 'alert alert-info d-inline-block';
+                modeIndicator.innerHTML = `
+                    <i class="bi bi-eye-fill"></i>
+                    <strong>Mode lecture seule</strong>
+                    <br><small>🔑 Connectez-vous avec GitHub pour modifier</small>
+                `;
+            }
+        }
+    }
+
+    openGitHubConfig() {
+        // Créer le modal de configuration GitHub s'il n'existe pas
+        let modal = document.getElementById('github-config-modal');
+        if (!modal) {
+            modal = this.createGitHubConfigModal();
+            document.body.appendChild(modal);
+        }
+
+        // Remplir le champ avec le token actuel s'il existe
+        const tokenInput = document.getElementById('github-token-input');
+        if (tokenInput && this.githubAuth.token) {
+            tokenInput.value = this.githubAuth.token;
+        }
+
+        // Afficher le modal
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
+
+    createGitHubConfigModal() {
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.id = 'github-config-modal';
+        modal.innerHTML = `
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="bi bi-github"></i> Configuration GitHub
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">🔑 Token d'accès personnel GitHub</label>
+                            <input type="password" class="form-control" id="github-token-input" 
+                                   placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+                            <div class="form-text">
+                                <strong>Comment obtenir un token :</strong><br>
+                                1. Allez sur <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings → Developer settings → Personal access tokens</a><br>
+                                2. Créez un nouveau token avec les permissions "repo"<br>
+                                3. Copiez-collez le token ici
+                            </div>
+                        </div>
+                        
+                        ${this.githubAuth.isAuthenticated ? `
+                        <div class="alert alert-success">
+                            <i class="bi bi-check-circle-fill"></i>
+                            <strong>Connecté en tant que :</strong> ${this.githubAuth.userInfo.login}
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="modal-footer">
+                        ${this.githubAuth.isAuthenticated ? `
+                        <button type="button" class="btn btn-danger" onclick="app.githubLogout()">
+                            <i class="bi bi-box-arrow-right"></i> Se déconnecter
+                        </button>
+                        ` : ''}
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                        <button type="button" class="btn btn-primary" onclick="app.githubLogin()">
+                            <i class="bi bi-key"></i> Se connecter
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        return modal;
+    }
+
+    async githubLogin() {
+        const tokenInput = document.getElementById('github-token-input');
+        const token = tokenInput?.value?.trim();
+
+        if (!token) {
+            this.showToast('❌ Veuillez entrer un token GitHub', 'danger');
+            return;
+        }
+
+        try {
+            this.showToast('🔄 Connexion en cours...', 'info');
+            
+            await this.githubAuth.authenticate(token);
+            
+            this.isEditMode = true;
+            this.updateAuthUI(true);
+            
+            // Fermer le modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('github-config-modal'));
+            if (modal) modal.hide();
+            
+            this.showToast('✅ Connexion GitHub réussie !', 'success');
+            
+        } catch (error) {
+            console.error('❌ Erreur connexion GitHub:', error);
+            this.showToast('❌ ' + error.message, 'danger');
+        }
+    }
+
+    githubLogout() {
+        this.githubAuth.logout();
+        this.isEditMode = false;
+        this.updateAuthUI(false);
+        
+        // Fermer le modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('github-config-modal'));
+        if (modal) modal.hide();
+        
+        this.showToast('🔓 Déconnecté de GitHub', 'info');
+    }
+}
+
 class RestaurantApp {
     constructor() {
         // Configuration de l'API (Netlify Functions)
