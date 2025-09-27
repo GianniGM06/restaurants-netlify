@@ -4,8 +4,23 @@ let pool;
 
 function getPool() {
   if (!pool) {
+    // Utilise la variable d'environnement Netlify + Neon
+    const databaseUrl = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
+    
+    console.log('🔍 Variables d\'environnement disponibles:', Object.keys(process.env).filter(key => key.includes('DATABASE')));
+    console.log('🔍 DATABASE_URL configurée:', databaseUrl ? 'Oui' : 'Non');
+    console.log('🔍 URL commence par postgresql:', databaseUrl?.startsWith('postgresql://') ? 'Oui' : 'Non');
+    
+    if (!databaseUrl) {
+      throw new Error('❌ Aucune DATABASE_URL configurée. Variables disponibles: ' + Object.keys(process.env).filter(key => key.includes('DATABASE')).join(', '));
+    }
+    
+    if (databaseUrl.includes('127.0.0.1') || databaseUrl.includes('localhost')) {
+      throw new Error('❌ DATABASE_URL pointe vers localhost au lieu de Neon: ' + databaseUrl);
+    }
+    
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: databaseUrl,
       ssl: {
         rejectUnauthorized: false
       }
@@ -41,10 +56,13 @@ exports.handler = async (event, context) => {
     };
   }
 
-  const client = getPool();
-
   try {
     console.log('💾 Sauvegarde des restaurants dans Neon DB...');
+
+    // Test de connection avant de traiter les données
+    const client = getPool();
+    await client.query('SELECT 1'); // Test de connection simple
+    console.log('✅ Connection Neon DB réussie');
 
     const requestData = JSON.parse(event.body);
     const { tested = [], wishlist = [], cuisineTypes = {} } = requestData;
@@ -173,7 +191,7 @@ exports.handler = async (event, context) => {
       // 7. Supprimer les restaurants qui ne sont plus dans les données envoyées
       const allCurrentIds = [...tested, ...wishlist].map(r => r.id);
       if (allCurrentIds.length > 0) {
-        const placeholders = allCurrentIds.map((_, index) => `$${index + 1}`).join(',');
+        const placeholders = allCurrentIds.map((_, index) => `${index + 1}`).join(',');
         await client.query(
           `DELETE FROM restaurants WHERE id NOT IN (${placeholders})`,
           allCurrentIds
@@ -214,7 +232,8 @@ exports.handler = async (event, context) => {
       body: JSON.stringify({ 
         success: false,
         error: 'Erreur sauvegarde', 
-        message: error.message 
+        message: error.message,
+        details: error.stack
       })
     };
   }
