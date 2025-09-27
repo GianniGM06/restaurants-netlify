@@ -1,6 +1,5 @@
-/* ===== APPLICATION RESTAURANT AVEC NETLIFY FUNCTIONS ===== */
+/* ===== SERVICE D'AUTHENTIFICATION GITHUB ===== */
 
-// Nouveau service d'authentification GitHub
 class GitHubAuthService {
     constructor() {
         this.token = localStorage.getItem('github-token') || null;
@@ -68,26 +67,16 @@ class GitHubAuthService {
         }
         return false;
     }
-
-    getAuthHeaders() {
-        if (!this.isAuthenticated || !this.token) {
-            throw new Error('Non authentifié');
-        }
-        
-        return {
-            'Authorization': `token ${this.token}`,
-            'Accept': 'application/vnd.github.v3+json'
-        };
-    }
 }
 
-// Modifications à apporter au constructeur de RestaurantApp
+/* ===== APPLICATION RESTAURANT AVEC NETLIFY FUNCTIONS + GITHUB AUTH ===== */
+
 class RestaurantApp {
     constructor() {
         // Configuration de l'API (Netlify Functions)
-        this.apiBase = '/api';
+        this.apiBase = '/api'; // Les functions sont accessibles via /api/*
         
-        // Nouveau service d'authentification GitHub
+        // Service d'authentification GitHub
         this.githubAuth = new GitHubAuthService();
         
         // État de l'application
@@ -97,14 +86,52 @@ class RestaurantApp {
             cuisineTypes: []
         };
         
-        // Mode édition basé sur l'authentification GitHub
-        this.isEditMode = false; // Par défaut en lecture
+        this.isEditMode = false; // Par défaut en lecture, devient true avec auth GitHub
         this.map = null;
         
-        console.log('🚀 Application initialisée avec Neon Functions + GitHub Auth');
+        console.log('🚀 Application initialisée avec Netlify Functions + GitHub Auth');
     }
 
-    // Nouvelle méthode pour gérer l'authentification
+    /* ===== CHARGEMENT INITIAL ===== */
+    async init() {
+        console.log('🚀 Début initialisation...');
+        
+        try {
+            // Toujours configurer l'UI d'abord
+            this.setupUI();
+            console.log('✅ UI configurée');
+            
+            // Vérifier l'authentification GitHub
+            await this.handleAuthentication();
+            console.log('✅ Authentification vérifiée');
+            
+            // Charger les données via Netlify Functions
+            await this.loadData();
+            console.log('✅ Données chargées');
+            
+            this.render();
+            console.log('✅ Rendu effectué');
+            
+            this.showToast('✅ Application prête !', 'success');
+            
+        } catch (error) {
+            console.error('❌ Erreur initialisation:', error);
+            
+            // En cas d'erreur, utiliser les données par défaut
+            this.data = {
+                tested: this.getDefaultTestedData(),
+                wishlist: this.getDefaultWishlistData(),
+                cuisineTypes: this.getDefaultCuisineTypes()
+            };
+            
+            this.render();
+            this.showToast('⚠️ Données par défaut chargées', 'warning');
+        }
+        
+        this.updateSyncStatus();
+    }
+
+    /* ===== GESTION AUTHENTIFICATION GITHUB ===== */
     async handleAuthentication() {
         try {
             // Vérifier si un token est déjà stocké
@@ -164,6 +191,14 @@ class RestaurantApp {
                 `;
             }
         }
+    }
+
+    checkEditPermission() {
+        if (!this.isEditMode) {
+            this.showToast('🔒 Connectez-vous avec GitHub pour modifier les restaurants', 'warning');
+            return false;
+        }
+        return true;
     }
 
     openGitHubConfig() {
@@ -275,60 +310,6 @@ class RestaurantApp {
         
         this.showToast('🔓 Déconnecté de GitHub', 'info');
     }
-}
-
-class RestaurantApp {
-    constructor() {
-        // Configuration de l'API (Netlify Functions)
-        this.apiBase = '/api'; // Les functions sont accessibles via /api/*
-        
-        // État de l'application
-        this.data = {
-            tested: [],
-            wishlist: [],
-            cuisineTypes: []
-        };
-        
-        this.isEditMode = true; // Toujours en mode édition avec Netlify
-        this.map = null;
-        
-        console.log('🚀 Application initialisée avec Netlify Functions');
-    }
-
-    /* ===== CHARGEMENT INITIAL ===== */
-    async init() {
-        console.log('🚀 Début initialisation...');
-        
-        try {
-            // Toujours configurer l'UI d'abord
-            this.setupUI();
-            console.log('✅ UI configurée');
-            
-            // Charger les données via Netlify Functions
-            await this.loadData();
-            console.log('✅ Données chargées');
-            
-            this.render();
-            console.log('✅ Rendu effectué');
-            
-            this.showToast('✅ Application prête !', 'success');
-            
-        } catch (error) {
-            console.error('❌ Erreur initialisation:', error);
-            
-            // En cas d'erreur, utiliser les données par défaut
-            this.data = {
-                tested: this.getDefaultTestedData(),
-                wishlist: this.getDefaultWishlistData(),
-                cuisineTypes: this.getDefaultCuisineTypes()
-            };
-            
-            this.render();
-            this.showToast('⚠️ Données par défaut chargées', 'warning');
-        }
-        
-        this.updateSyncStatus();
-    }
 
     /* ===== CHARGEMENT DES DONNÉES VIA NETLIFY FUNCTIONS ===== */
     async loadData() {
@@ -420,6 +401,11 @@ class RestaurantApp {
 
     /* ===== SAUVEGARDE AUTOMATIQUE ===== */
     async autoSave() {
+        if (!this.isEditMode) {
+            console.log('⚠️ Mode lecture, pas de sauvegarde');
+            return;
+        }
+
         console.log('💾 Sauvegarde automatique...');
         
         this.updateSyncStatus('💾 Sauvegarde...');
@@ -454,23 +440,6 @@ class RestaurantApp {
         // Mise à jour du statut
         this.updateSyncStatus();
 
-        // Mise à jour de l'indicateur dans la hero section
-        const modeIndicator = document.getElementById('mode-indicator');
-        if (modeIndicator) {
-            modeIndicator.className = 'alert alert-success d-inline-block';
-            modeIndicator.innerHTML = `
-                <i class="bi bi-rocket-fill"></i>
-                <strong>Powered by Netlify Functions :</strong> Mises à jour instantanées !
-                <br><small>⚡ Données synchronisées en temps réel via API sécurisée</small>
-            `;
-        }
-
-        // Afficher tous les boutons d'édition
-        const editElements = document.querySelectorAll('.edit-only');
-        editElements.forEach(el => {
-            el.style.display = 'block';
-        });
-
         this.setupEventListeners();
     }
 
@@ -492,25 +461,47 @@ class RestaurantApp {
                 syncBtnHero.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Actualiser';
             }
 
-            // Boutons d'ajout
+            // Boutons d'ajout (visibles seulement en mode édition)
             const addTestedBtn = document.getElementById('add-tested');
             if (addTestedBtn) {
-                addTestedBtn.onclick = () => this.openAddModal('tested');
+                addTestedBtn.onclick = () => {
+                    if (this.isEditMode) {
+                        this.openAddModal('tested');
+                    } else {
+                        this.showToast('🔒 Connectez-vous avec GitHub pour modifier', 'warning');
+                    }
+                };
             }
 
             const addWishlistBtn = document.getElementById('add-wishlist');
             if (addWishlistBtn) {
-                addWishlistBtn.onclick = () => this.openAddModal('wishlist');
+                addWishlistBtn.onclick = () => {
+                    if (this.isEditMode) {
+                        this.openAddModal('wishlist');
+                    } else {
+                        this.showToast('🔒 Connectez-vous avec GitHub pour modifier', 'warning');
+                    }
+                };
             }
 
             // Bouton flottant
             const floatingBtn = document.getElementById('floating-add-btn');
             if (floatingBtn) {
                 floatingBtn.onclick = () => {
-                    const activeTab = document.querySelector('.nav-link.active');
-                    const type = (activeTab && activeTab.id.includes('wishlist')) ? 'wishlist' : 'tested';
-                    this.openAddModal(type);
+                    if (this.isEditMode) {
+                        const activeTab = document.querySelector('.nav-link.active');
+                        const type = (activeTab && activeTab.id.includes('wishlist')) ? 'wishlist' : 'tested';
+                        this.openAddModal(type);
+                    } else {
+                        this.showToast('🔒 Connectez-vous avec GitHub pour modifier', 'warning');
+                    }
                 };
+            }
+
+            // Bouton configuration GitHub
+            const githubConfigBtn = document.getElementById('github-config');
+            if (githubConfigBtn) {
+                githubConfigBtn.onclick = () => this.openGitHubConfig();
             }
 
             // Onglet carte
@@ -531,13 +522,13 @@ class RestaurantApp {
     /* ===== MISE À JOUR DU STATUT ===== */
     updateSyncStatus(customStatus = null) {
         const statusBadge = document.getElementById('status-badge');
-        if (statusBadge) {
+        if (statusBadge && !this.githubAuth.isAuthenticated) {
             if (customStatus) {
                 statusBadge.className = 'badge bg-warning fs-6';
                 statusBadge.textContent = customStatus;
             } else {
-                statusBadge.className = 'badge bg-success fs-6';
-                statusBadge.textContent = '⚡ Netlify Functions';
+                statusBadge.className = 'badge bg-info fs-6';
+                statusBadge.textContent = '⚡ Neon DB';
             }
         }
     }
@@ -584,6 +575,15 @@ class RestaurantApp {
         const rating = this.calculateRating(restaurant.ratings);
         const photo = restaurant.photo || restaurant.photos?.[0] || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=250&fit=crop';
         
+        const editButtons = this.isEditMode ? `
+            <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'tested')">
+                <i class="bi bi-pencil"></i> Modifier
+            </button>
+            <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'tested')">
+                <i class="bi bi-trash"></i> Supprimer
+            </button>
+        ` : '';
+        
         return `
             <div class="col-md-6 mb-4">
                 <div class="card restaurant-card h-100">
@@ -624,12 +624,7 @@ class RestaurantApp {
                         ${restaurant.comment ? `<blockquote class="blockquote-footer mt-3">"${restaurant.comment}"</blockquote>` : ''}
 
                         <div class="action-buttons">
-                            <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'tested')">
-                                <i class="bi bi-pencil"></i> Modifier
-                            </button>
-                            <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'tested')">
-                                <i class="bi bi-trash"></i> Supprimer
-                            </button>
+                            ${editButtons}
                             ${restaurant.coordinates ? `
                             <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
                                 <i class="bi bi-geo-alt"></i> Carte
@@ -644,6 +639,22 @@ class RestaurantApp {
 
     createWishlistCard(restaurant) {
         const photo = restaurant.photo || restaurant.photos?.[0] || 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=250&fit=crop';
+        
+        const editButtons = this.isEditMode ? `
+            <button class="btn btn-success btn-action" onclick="app.moveToTested(${restaurant.id})">
+                <i class="bi bi-arrow-right"></i> Testé !
+            </button>
+            <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'wishlist')">
+                <i class="bi bi-pencil"></i> Modifier
+            </button>
+            <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'wishlist')">
+                <i class="bi bi-trash"></i> Supprimer
+            </button>
+        ` : `
+            <button class="btn btn-outline-secondary btn-action" disabled>
+                <i class="bi bi-lock"></i> Mode lecture
+            </button>
+        `;
         
         return `
             <div class="col-md-6 mb-4">
@@ -669,15 +680,7 @@ class RestaurantApp {
                         ${restaurant.comment ? `<p class="text-muted"><em>"${restaurant.comment}"</em></p>` : ''}
 
                         <div class="action-buttons">
-                            <button class="btn btn-success btn-action" onclick="app.moveToTested(${restaurant.id})">
-                                <i class="bi bi-arrow-right"></i> Testé !
-                            </button>
-                            <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'wishlist')">
-                                <i class="bi bi-pencil"></i> Modifier
-                            </button>
-                            <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'wishlist')">
-                                <i class="bi bi-trash"></i> Supprimer
-                            </button>
+                            ${editButtons}
                             ${restaurant.coordinates ? `
                             <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
                                 <i class="bi bi-geo-alt"></i> Carte
@@ -696,20 +699,30 @@ class RestaurantApp {
         const title = isWishlist ? 'Aucun restaurant en wishlist' : 'Aucun restaurant testé';
         const text = isWishlist ? 'Ajoutez des restaurants que vous aimeriez tester !' : 'Commencez par ajouter vos premiers restaurants testés !';
         
+        const button = this.isEditMode ? `
+            <button class="btn btn-${isWishlist ? 'success' : 'primary'}" onclick="app.openAddModal('${type}')">
+                <i class="bi bi-plus-lg"></i> Ajouter
+            </button>
+        ` : `
+            <button class="btn btn-outline-secondary" onclick="app.openGitHubConfig()">
+                <i class="bi bi-key"></i> Se connecter pour ajouter
+            </button>
+        `;
+        
         return `
             <div class="col-12 text-center py-5">
                 <i class="bi bi-${icon} fs-1 text-muted mb-3"></i>
                 <h4>${title}</h4>
                 <p class="text-muted">${text}</p>
-                <button class="btn btn-${isWishlist ? 'success' : 'primary'}" onclick="app.openAddModal('${type}')">
-                    <i class="bi bi-plus-lg"></i> Ajouter
-                </button>
+                ${button}
             </div>
         `;
     }
 
     /* ===== MODAL D'AJOUT/MODIFICATION ===== */
     openAddModal(type) {
+        if (!this.checkEditPermission()) return;
+        
         console.log('📝 Ouverture modal:', type);
 
         const modal = new bootstrap.Modal(document.getElementById('restaurant-modal'));
@@ -736,97 +749,118 @@ class RestaurantApp {
         }, 200);
     }
 
-    // Dans la fonction saveRestaurant de script.js, remplace cette partie :
-
-async saveRestaurant() {
-    const form = document.getElementById('restaurant-form');
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
-    
-    const id = document.getElementById('restaurant-id').value;
-    const type = document.getElementById('restaurant-type').value;
-    const isEdit = !!id;
-    
-    console.log('🔍 === DEBUG JAVASCRIPT SAVE ===');
-    console.log('Form ID value:', id);
-    console.log('Is edit mode:', isEdit);
-    console.log('ID exists and not empty:', id && id.trim() !== '');
-    
-    // Traiter le type de cuisine
-    const cuisineInput = document.getElementById('restaurant-cuisine').value;
-    const cuisineType = this.addNewCuisineType(cuisineInput);
-    
-    // CORRECTION : Générer un ID valide
-    let restaurantId;
-    if (isEdit && id && id.trim() !== '') {
-        restaurantId = parseInt(id);
-        console.log('🔄 Using existing ID:', restaurantId);
-    } else {
-        restaurantId = Date.now();
-        console.log('➕ Generated new ID:', restaurantId);
-    }
-    
-    // Vérifier que l'ID est valide
-    if (!restaurantId || isNaN(restaurantId)) {
-        console.error('❌ Invalid ID generated:', restaurantId);
-        this.showToast('❌ Erreur génération ID', 'danger');
-        return;
-    }
-    
-    const restaurantData = {
-        id: restaurantId, // Utiliser l'ID corrigé
-        name: document.getElementById('restaurant-name').value,
-        type: cuisineType,
-        location: document.getElementById('restaurant-location').value,
-        address: document.getElementById('restaurant-address').value,
-        priceRange: document.getElementById('restaurant-price').value,
-        photo: document.getElementById('restaurant-photo').value,
-        comment: document.getElementById('restaurant-comment').value,
-        dateAdded: isEdit ? this.data[type].find(r => r.id === parseInt(id)).dateAdded : new Date().toISOString().split('T')[0]
-    };
-    
-    console.log('🔍 Final restaurant data:', restaurantData);
-    console.log('🔍 Restaurant ID type:', typeof restaurantData.id);
-    console.log('🔍 Restaurant ID value:', restaurantData.id);
-    
-    if (type === 'tested') {
-        restaurantData.ratings = {
-            plats: parseFloat(document.getElementById('rating-plats').value),
-            vins: parseFloat(document.getElementById('rating-vins').value),
-            accueil: parseFloat(document.getElementById('rating-accueil').value),
-            lieu: parseFloat(document.getElementById('rating-lieu').value)
+    async saveRestaurant() {
+        // Vérifier les permissions d'édition
+        if (!this.checkEditPermission()) return;
+        
+        const form = document.getElementById('restaurant-form');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+        
+        const id = document.getElementById('restaurant-id').value;
+        const type = document.getElementById('restaurant-type').value;
+        const isEdit = !!id;
+        
+        console.log('🔍 === DEBUG JAVASCRIPT SAVE ===');
+        console.log('Form ID value:', id);
+        console.log('Is edit mode:', isEdit);
+        console.log('ID exists and not empty:', id && id.trim() !== '');
+        console.log('User authenticated:', this.isEditMode);
+        
+        // Traiter le type de cuisine
+        const cuisineInput = document.getElementById('restaurant-cuisine').value;
+        const cuisineType = this.addNewCuisineType(cuisineInput);
+        
+        // CORRECTION : Générer un ID valide
+        let restaurantId;
+        if (isEdit && id && id.trim() !== '') {
+            restaurantId = parseInt(id);
+            console.log('🔄 Using existing ID:', restaurantId);
+        } else {
+            restaurantId = Date.now();
+            console.log('➕ Generated new ID:', restaurantId);
+        }
+        
+        // Vérifier que l'ID est valide
+        if (!restaurantId || isNaN(restaurantId)) {
+            console.error('❌ Invalid ID generated:', restaurantId);
+            this.showToast('❌ Erreur génération ID', 'danger');
+            return;
+        }
+        
+        const restaurantData = {
+            id: restaurantId, // Utiliser l'ID corrigé
+            name: document.getElementById('restaurant-name').value,
+            type: cuisineType,
+            location: document.getElementById('restaurant-location').value,
+            address: document.getElementById('restaurant-address').value,
+            priceRange: document.getElementById('restaurant-price').value,
+            photo: document.getElementById('restaurant-photo').value,
+            comment: document.getElementById('restaurant-comment').value,
+            dateAdded: isEdit ? this.data[type].find(r => r.id == id)?.dateAdded || new Date().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
         };
-        restaurantData.dateVisited = restaurantData.dateAdded;
-    } else {
-        restaurantData.reason = document.getElementById('restaurant-reason').value;
+        
+        console.log('🔍 Final restaurant data:', restaurantData);
+        console.log('🔍 Restaurant ID type:', typeof restaurantData.id);
+        console.log('🔍 Restaurant ID value:', restaurantData.id);
+        
+        if (type === 'tested') {
+            restaurantData.ratings = {
+                plats: parseFloat(document.getElementById('rating-plats').value),
+                vins: parseFloat(document.getElementById('rating-vins').value),
+                accueil: parseFloat(document.getElementById('rating-accueil').value),
+                lieu: parseFloat(document.getElementById('rating-lieu').value)
+            };
+            restaurantData.dateVisited = restaurantData.dateAdded;
+        } else {
+            restaurantData.reason = document.getElementById('restaurant-reason').value;
+        }
+        
+        // Ajouter/modifier dans les données
+        if (isEdit) {
+            const index = this.data[type].findIndex(r => r.id == id);
+            if (index !== -1) {
+                this.data[type][index] = restaurantData;
+            } else {
+                console.warn('⚠️ Restaurant à modifier non trouvé, ajout en nouveau');
+                this.data[type].push(restaurantData);
+            }
+        } else {
+            this.data[type].push(restaurantData);
+        }
+        
+        // Fermer le modal et re-render immédiatement
+        bootstrap.Modal.getInstance(document.getElementById('restaurant-modal')).hide();
+        this.render();
+        
+        // Notification instantanée
+        this.showToast(isEdit ? '✅ Restaurant modifié !' : '✅ Restaurant ajouté !', 'success');
+        
+        // Sauvegarde automatique en arrière-plan
+        try {
+            await this.autoSave();
+            console.log('✅ Sauvegarde réussie');
+        } catch (error) {
+            console.error('❌ Erreur sauvegarde:', error);
+            this.showToast('⚠️ Erreur sauvegarde, modification locale seulement', 'warning');
+        }
     }
-    
-    // Ajouter/modifier dans les données
-    if (isEdit) {
-        const index = this.data[type].findIndex(r => r.id === parseInt(id));
-        this.data[type][index] = restaurantData;
-    } else {
-        this.data[type].push(restaurantData);
-    }
-    
-    // Fermer le modal et re-render immédiatement
-    bootstrap.Modal.getInstance(document.getElementById('restaurant-modal')).hide();
-    this.render();
-    
-    // Notification instantanée
-    this.showToast(isEdit ? '✅ Restaurant modifié !' : '✅ Restaurant ajouté !', 'success');
-    
-    // Sauvegarde automatique en arrière-plan
-    await this.autoSave();
-}
 
     editRestaurant(id, type) {
-        const restaurant = this.data[type].find(r => r.id === id);
-        if (!restaurant) return;
+        if (!this.checkEditPermission()) return;
         
-        console.log('✏️ Édition restaurant:', restaurant.name);
+        console.log('✏️ Édition restaurant ID:', id, 'Type:', type);
+        
+        const restaurant = this.data[type].find(r => r.id == id); // Utiliser == pour éviter les problèmes de type
+        if (!restaurant) {
+            console.error('❌ Restaurant non trouvé:', id);
+            this.showToast('❌ Restaurant non trouvé', 'danger');
+            return;
+        }
+        
+        console.log('✏️ Restaurant trouvé:', restaurant.name);
         
         // Remplir le formulaire
         document.getElementById('restaurant-id').value = id;
@@ -840,16 +874,17 @@ async saveRestaurant() {
         document.getElementById('restaurant-comment').value = restaurant.comment || '';
         
         if (type === 'tested') {
-            document.getElementById('rating-plats').value = restaurant.ratings.plats || 5;
-            document.getElementById('rating-vins').value = restaurant.ratings.vins || 5;
-            document.getElementById('rating-accueil').value = restaurant.ratings.accueil || 5;
-            document.getElementById('rating-lieu').value = restaurant.ratings.lieu || 5;
+            const ratings = restaurant.ratings || { plats: 5, vins: 5, accueil: 5, lieu: 5 };
+            document.getElementById('rating-plats').value = ratings.plats;
+            document.getElementById('rating-vins').value = ratings.vins;
+            document.getElementById('rating-accueil').value = ratings.accueil;
+            document.getElementById('rating-lieu').value = ratings.lieu;
             
             // Mettre à jour les affichages des sliders
-            document.getElementById('plats-value').textContent = (restaurant.ratings.plats || 5).toFixed(1);
-            document.getElementById('vins-value').textContent = (restaurant.ratings.vins || 5).toFixed(1);
-            document.getElementById('accueil-value').textContent = (restaurant.ratings.accueil || 5).toFixed(1);
-            document.getElementById('lieu-value').textContent = (restaurant.ratings.lieu || 5).toFixed(1);
+            document.getElementById('plats-value').textContent = ratings.plats.toFixed(1);
+            document.getElementById('vins-value').textContent = ratings.vins.toFixed(1);
+            document.getElementById('accueil-value').textContent = ratings.accueil.toFixed(1);
+            document.getElementById('lieu-value').textContent = ratings.lieu.toFixed(1);
         } else {
             document.getElementById('restaurant-reason').value = restaurant.reason || '';
         }
@@ -870,21 +905,42 @@ async saveRestaurant() {
     }
 
     async deleteRestaurant(id, type) {
-        const restaurant = this.data[type].find(r => r.id === id);
-        if (!restaurant) return;
+        if (!this.checkEditPermission()) return;
+        
+        console.log('🗑️ Suppression restaurant ID:', id, 'Type:', type);
+        
+        const restaurant = this.data[type].find(r => r.id == id); // Utiliser == pour éviter les problèmes de type
+        if (!restaurant) {
+            console.error('❌ Restaurant non trouvé:', id);
+            this.showToast('❌ Restaurant non trouvé', 'danger');
+            return;
+        }
         
         if (confirm(`Supprimer "${restaurant.name}" ?`)) {
-            // Supprimer immédiatement
-            this.data[type] = this.data[type].filter(r => r.id !== id);
+            console.log('🗑️ Confirmation de suppression pour:', restaurant.name);
+            
+            // Supprimer immédiatement de la liste locale
+            this.data[type] = this.data[type].filter(r => r.id != id);
             this.render();
             this.showToast('✅ Restaurant supprimé !', 'success');
             
             // Sauvegarde automatique en arrière-plan
-            await this.autoSave();
+            try {
+                await this.autoSave();
+                console.log('✅ Suppression sauvegardée');
+            } catch (error) {
+                console.error('❌ Erreur sauvegarde suppression:', error);
+                // Recharger les données en cas d'erreur
+                await this.loadData();
+                this.render();
+                this.showToast('❌ Erreur suppression, données rechargées', 'warning');
+            }
         }
     }
 
     moveToTested(id) {
+        if (!this.checkEditPermission()) return;
+        
         const restaurant = this.data.wishlist.find(r => r.id === id);
         if (!restaurant) return;
         
@@ -1371,5 +1427,46 @@ function selectCuisine(cuisine) {
 
 function confirmTransfer() {
     if (app) app.confirmTransfer();
-
 }
+
+function githubLogin() {
+    if (app) app.githubLogin();
+}
+
+function githubLogout() {
+    if (app) app.githubLogout();
+}
+
+// Mise à jour en temps réel des valeurs des sliders
+document.addEventListener('DOMContentLoaded', () => {
+    ['plats', 'vins', 'accueil', 'lieu'].forEach(type => {
+        const slider = document.getElementById(`rating-${type}`);
+        const display = document.getElementById(`${type}-value`);
+        
+        if (slider && display) {
+            slider.addEventListener('input', () => {
+                display.textContent = parseFloat(slider.value).toFixed(1);
+            });
+        }
+    });
+
+    // Bouton de synchronisation dans le hero
+    const syncBtnHero = document.getElementById('sync-btn-hero');
+    if (syncBtnHero) {
+        syncBtnHero.addEventListener('click', () => {
+            if (app) {
+                app.manualSync();
+            }
+        });
+    }
+
+    // Bouton flottant
+    const floatingBtn = document.getElementById('floating-add-btn');
+    if (floatingBtn) {
+        floatingBtn.addEventListener('click', () => {
+            const activeTab = document.querySelector('.nav-link.active');
+            const type = (activeTab && activeTab.id.includes('wishlist')) ? 'wishlist' : 'tested';
+            if (app) app.openAddModal(type);
+        });
+    }
+});
