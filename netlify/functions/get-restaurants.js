@@ -1,3 +1,19 @@
+const { Pool } = require('pg');
+
+let pool;
+
+function getPool() {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+  }
+  return pool;
+}
+
 exports.handler = async (event, context) => {
   // Headers CORS
   const headers = {
@@ -25,64 +41,133 @@ exports.handler = async (event, context) => {
     };
   }
 
+  const client = getPool();
+
   try {
-    console.log('🔍 Récupération des restaurants depuis GitHub...');
-    
-    // Configuration GitHub depuis les variables d'environnement
-    const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-    const GITHUB_OWNER = process.env.GITHUB_OWNER || 'giannigm06';
-    const GITHUB_REPO = process.env.GITHUB_REPO || 'Restaurants_data';
-    const GITHUB_FILE = process.env.GITHUB_FILE || 'restaurants.json';
-    
-    if (!GITHUB_TOKEN) {
-      throw new Error('GITHUB_TOKEN non configuré');
-    }
-    
-    // Récupérer le fichier depuis l'API GitHub
-    const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
-    
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'Netlify-Functions'
+    console.log('🔍 Récupération des restaurants depuis Neon DB...');
+
+    // Récupérer tous les restaurants avec leurs infos complètes
+    const restaurantsQuery = `
+      SELECT 
+        r.id,
+        r.name,
+        ct.name as type,
+        ct.emoji as cuisine_emoji,
+        r.location,
+        r.address,
+        r.latitude,
+        r.longitude,
+        r.price_range,
+        r.photo_url as photo,
+        r.comment,
+        r.status,
+        r.reason,
+        r.date_added,
+        r.date_visited,
+        rt.plats,
+        rt.vins,
+        rt.accueil,
+        rt.lieu
+      FROM restaurants r
+      LEFT JOIN cuisine_types ct ON r.cuisine_type_id = ct.id
+      LEFT JOIN ratings rt ON r.id = rt.restaurant_id
+      ORDER BY r.created_at DESC
+    `;
+
+    const restaurantsResult = await client.query(restaurantsQuery);
+
+    // Récupérer les types de cuisine
+    const cuisineTypesQuery = `
+      SELECT name, emoji 
+      FROM cuisine_types 
+      ORDER BY name
+    `;
+
+    const cuisineTypesResult = await client.query(cuisineTypesQuery);
+
+    // Traiter les données des restaurants
+    const tested = [];
+    const wishlist = [];
+
+    restaurantsResult.rows.forEach(row => {
+      const restaurant = {
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        location: row.location,
+        address: row.address,
+        priceRange: row.price_range,
+        photo: row.photo_url,
+        comment: row.comment,
+        dateAdded: row.date_added
+      };
+
+      // Ajouter les coordonnées si elles existent
+      if (row.latitude && row.longitude) {
+        restaurant.coordinates = {
+          lat: parseFloat(row.latitude),
+          lng: parseFloat(row.longitude)
+        };
+      }
+
+      if (row.status === 'tested') {
+        // Ajouter les notes et la date de visite
+        if (row.plats !== null) {
+          restaurant.ratings = {
+            plats: parseFloat(row.plats),
+            vins: parseFloat(row.vins),
+            accueil: parseFloat(row.accueil),
+            lieu: parseFloat(row.lieu)
+          };
+        }
+        restaurant.dateVisited = row.date_visited;
+        tested.push(restaurant);
+      } else if (row.status === 'wishlist') {
+        restaurant.reason = row.reason;
+        wishlist.push(restaurant);
       }
     });
-    
-    if (!response.ok) {
-      throw new Error(`GitHub API Error: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    
-    // Décoder le contenu base64
-    const content = Buffer.from(data.content, 'base64').toString('utf8');
-    const restaurantData = JSON.parse(content);
-    
-    console.log('✅ Restaurants récupérés:', {
-      tested: restaurantData.tested?.length || 0,
-      wishlist: restaurantData.wishlist?.length || 0
+
+    // Traiter les types de cuisine
+    const cuisineTypes = {};
+    cuisineTypesResult.rows.forEach(row => {
+      cuisineTypes[row.name] = {
+        color: 'primary',
+        emoji: row.emoji
+      };
     });
-    
-    // Ajouter métadonnées
-    const response_data = {
-      ...restaurantData,
-      _meta: {
-        timestamp: new Date().toISOString(),
-        source: 'netlify-functions',
-        sha: data.sha
+
+    const responseData = {
+      config: {
+        title: "Mon Carnet Gastro",
+        author: "Gianni",
+        location: "Paris, France"
+      },
+      tested: tested,
+      wishlist: wishlist,
+      cuisineTypes: cuisineTypes,
+      metadata: {
+        lastUpdated: new Date().toISOString(),
+        totalEntries: tested.length + wishlist.length,
+        source: 'neon-db'
       }
     };
-    
+
+    console.log('✅ Restaurants récupérés:', {
+      tested: tested.length,
+      wishlist: wishlist.length,
+      cuisineTypes: Object.keys(cuisineTypes).length
+    });
+
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify(response_data)
+      body: JSON.stringify(responseData)
     };
-    
+
   } catch (error) {
     console.error('❌ Erreur récupération restaurants:', error);
-    
+
     return {
       statusCode: 500,
       headers,
