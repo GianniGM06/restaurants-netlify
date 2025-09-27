@@ -4,8 +4,15 @@ let pool;
 
 function getPool() {
   if (!pool) {
+    // Utilise la variable d'environnement Netlify + Neon
+    const databaseUrl = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
+    
+    if (!databaseUrl) {
+      throw new Error('Aucune DATABASE_URL configurée');
+    }
+    
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: databaseUrl,
       ssl: {
         rejectUnauthorized: false
       }
