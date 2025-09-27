@@ -138,4 +138,8 @@ WHERE table_name IN ('restaurants', 'ratings', 'cuisine_types')
 ORDER BY table_name, ordinal_position;
 
 -- Message de confirmation
+
 SELECT 'Schema PostgreSQL créé avec succès ! Tables: cuisine_types, restaurants (BIGINT), ratings' as status;
+
+ALTER TABLE restaurants ADD COLUMN google_maps_url TEXT;
+CREATE INDEX idx_restaurants_google_maps ON restaurants(google_maps_url);
