@@ -543,161 +543,257 @@ body {
     border-radius: 10px;
 }
 
-/* ===== FILTRES ===== */
-.filters-container {
-    background: #f8f9fa;
-    border-bottom: 1px solid #e9ecef;
-    padding: 1rem 0;
-    margin-bottom: 1.5rem;
+/* ===== FILTRES - VERSION CORRIGÉE AVEC PRIORITÉ ===== */
+
+/* Container principal des filtres */
+.main-container .filters-container {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+    border-bottom: 1px solid #dee2e6 !important;
+    padding: 1.5rem 0 !important;
+    margin-bottom: 2rem !important;
+    border-radius: 0 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 
-.filters-row {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    flex-wrap: wrap;
+/* Layout horizontal */
+.filters-container .filters-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 2rem !important;
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
 }
 
-.filter-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+/* Groupes de filtres */
+.filters-container .filter-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.75rem !important;
+    min-width: auto !important;
 }
 
-.filter-label {
-    font-weight: 600;
-    color: #495057;
-    font-size: 0.9rem;
-    white-space: nowrap;
+/* Labels des filtres */
+.filters-container .filter-label {
+    font-weight: 600 !important;
+    color: #495057 !important;
+    font-size: 0.95rem !important;
+    white-space: nowrap !important;
+    margin: 0 !important;
 }
 
-.filter-dropdown {
-    min-width: 150px;
-    font-size: 0.9rem;
-    border: 1px solid #ced4da;
-    border-radius: 6px;
-    padding: 0.4rem 0.8rem;
+/* Dropdowns de filtres */
+.filters-container .filter-dropdown {
+    min-width: 180px !important;
+    max-width: 220px !important;
+    font-size: 0.9rem !important;
+    border: 2px solid #ced4da !important;
+    border-radius: 8px !important;
+    padding: 0.5rem 0.75rem !important;
+    background: white !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 
-.filter-dropdown:focus {
-    border-color: var(--bs-primary);
-    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+.filters-container .filter-dropdown:focus {
+    border-color: var(--bs-primary) !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25) !important;
+    outline: none !important;
 }
 
-.price-checkboxes {
-    display: flex;
-    gap: 0.75rem;
-    align-items: center;
+/* Checkboxes de prix */
+.filters-container .price-checkboxes {
+    display: flex !important;
+    gap: 0.5rem !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
 }
 
-.price-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.9rem;
-    cursor: pointer;
-    padding: 0.3rem 0.6rem;
-    border-radius: 15px;
-    transition: all 0.2s ease;
-    border: 1px solid transparent;
+.filters-container .price-checkbox {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.3rem !important;
+    font-size: 0.9rem !important;
+    cursor: pointer !important;
+    padding: 0.4rem 0.8rem !important;
+    border-radius: 20px !important;
+    transition: all 0.3s ease !important;
+    border: 2px solid #e9ecef !important;
+    background: white !important;
+    font-weight: 500 !important;
+    min-width: 45px !important;
+    justify-content: center !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 
-.price-checkbox:hover {
-    background: #e9ecef;
+.filters-container .price-checkbox:hover {
+    background: #e9ecef !important;
+    border-color: #adb5bd !important;
+    transform: translateY(-1px) !important;
 }
 
-.price-checkbox.active {
-    background: var(--bs-primary);
-    color: white;
-    border-color: var(--bs-primary);
+.filters-container .price-checkbox.active {
+    background: var(--bs-primary) !important;
+    color: white !important;
+    border-color: var(--bs-primary) !important;
+    box-shadow: 0 4px 8px rgba(13, 110, 253, 0.3) !important;
 }
 
-.price-checkbox input[type="checkbox"] {
-    display: none;
+.filters-container .price-checkbox input[type="checkbox"] {
+    display: none !important;
 }
 
-.filters-actions {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
+/* Actions à droite */
+.filters-container .filters-actions {
+    margin-left: auto !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 1rem !important;
+    flex-shrink: 0 !important;
 }
 
-.results-count {
-    font-size: 0.9rem;
-    color: #6c757d;
-    font-weight: 500;
+/* Compteur de résultats */
+.filters-container .results-count {
+    font-size: 0.9rem !important;
+    color: #6c757d !important;
+    font-weight: 600 !important;
+    background: white !important;
+    padding: 0.3rem 0.8rem !important;
+    border-radius: 15px !important;
+    border: 1px solid #e9ecef !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 
-.clear-filters-btn {
-    font-size: 0.85rem;
-    padding: 0.4rem 0.8rem;
-    border-radius: 15px;
-    border: 1px solid #dc3545;
-    background: transparent;
-    color: #dc3545;
-    transition: all 0.2s ease;
+/* Bouton effacer filtres */
+.filters-container .clear-filters-btn {
+    font-size: 0.85rem !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: 20px !important;
+    border: 2px solid #dc3545 !important;
+    background: white !important;
+    color: #dc3545 !important;
+    transition: all 0.3s ease !important;
+    font-weight: 600 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 
-.clear-filters-btn:hover {
-    background: #dc3545;
-    color: white;
+.filters-container .clear-filters-btn:hover:not(:disabled) {
+    background: #dc3545 !important;
+    color: white !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3) !important;
 }
 
-.clear-filters-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.filters-container .clear-filters-btn:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
 }
 
-/* Badges pour les cuisines sélectionnées */
-.cuisine-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
+/* Badges des sélections */
+.filters-container .cuisine-badges,
+.filters-container .location-badges {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    margin-top: 1rem !important;
+    width: 100% !important;
 }
 
-.cuisine-badge {
-    background: var(--bs-primary);
-    color: white;
-    padding: 0.25rem 0.6rem;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
+.filters-container .cuisine-badge {
+    background: linear-gradient(45deg, var(--bs-primary), #4c63d2) !important;
+    color: white !important;
+    padding: 0.3rem 0.8rem !important;
+    border-radius: 15px !important;
+    font-size: 0.8rem !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.4rem !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    font-weight: 500 !important;
+    box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3) !important;
+    border: none !important;
 }
 
-.cuisine-badge:hover {
-    background: #0056b3;
+.filters-container .cuisine-badge:hover {
+    background: linear-gradient(45deg, #0056b3, #3a52c2) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 8px rgba(13, 110, 253, 0.4) !important;
 }
 
-.cuisine-badge .remove {
-    font-weight: bold;
-    margin-left: 0.2rem;
+.filters-container .cuisine-badge .remove {
+    font-weight: bold !important;
+    margin-left: 0.2rem !important;
+    padding: 0.1rem 0.3rem !important;
+    border-radius: 50% !important;
+    background: rgba(255,255,255,0.2) !important;
+    font-size: 0.7rem !important;
+}
+
+/* Message d'état vide avec filtres */
+.filters-container ~ .tab-content .col-12 .bi-search {
+    color: var(--bs-primary) !important;
 }
 
 /* Responsive */
+@media (max-width: 992px) {
+    .filters-container .filters-row {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 1.5rem !important;
+    }
+    
+    .filters-container .filter-group {
+        justify-content: space-between !important;
+        width: 100% !important;
+    }
+    
+    .filters-container .filter-dropdown {
+        min-width: 150px !important;
+        flex: 1 !important;
+        max-width: none !important;
+    }
+    
+    .filters-container .filters-actions {
+        margin-left: 0 !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+    }
+    
+    .filters-container .price-checkboxes {
+        justify-content: center !important;
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+    }
+}
+
 @media (max-width: 768px) {
-    .filters-row {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 1rem;
+    .filters-container {
+        padding: 1rem 0 !important;
     }
     
-    .filter-group {
-        justify-content: space-between;
+    .filters-container .filter-group {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 0.5rem !important;
     }
     
-    .filters-actions {
-        margin-left: 0;
-        justify-content: space-between;
+    .filters-container .filter-label {
+        font-size: 0.9rem !important;
     }
     
-    .price-checkboxes {
-        justify-content: center;
-        flex-wrap: wrap;
+    .filters-container .filter-dropdown {
+        width: 100% !important;
+        min-width: auto !important;
+    }
+    
+    .filters-container .price-checkboxes {
+        width: 100% !important;
+        justify-content: space-around !important;
+    }
+    
+    .filters-container .price-checkbox {
+        flex: 1 !important;
+        max-width: 60px !important;
     }
 }
