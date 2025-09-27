@@ -97,6 +97,12 @@ exports.handler = async (event, context) => {
 
       // 3. Fonction helper pour sauvegarder un restaurant
       async function saveRestaurant(restaurant, status) {
+        console.log('🔍 === DEBUG RESTAURANT ===');
+        console.log('Restaurant object:', JSON.stringify(restaurant, null, 2));
+        console.log('Restaurant.id:', restaurant.id);
+        console.log('Restaurant.id type:', typeof restaurant.id);
+        console.log('Restaurant.id exists:', restaurant.id !== undefined && restaurant.id !== null);
+        
         const cuisineTypeId = await getCuisineTypeId(restaurant.type);
         
         const restaurantData = [
@@ -115,15 +121,20 @@ exports.handler = async (event, context) => {
           restaurant.dateVisited || null
         ];
 
+        console.log('🔍 Restaurant data prepared:', restaurantData);
+
         // Vérifier si le restaurant existe déjà
         const existingResult = await client.query(
           'SELECT id FROM restaurants WHERE id = $1',
           [restaurant.id]
         );
 
+        console.log('🔍 Existing check result:', existingResult.rows.length);
+
         let restaurantId;
 
         if (existingResult.rows.length > 0) {
+          console.log('🔄 UPDATING existing restaurant with ID:', restaurant.id);
           // Mettre à jour le restaurant existant
           await client.query(`
             UPDATE restaurants SET 
@@ -146,16 +157,24 @@ exports.handler = async (event, context) => {
           
           restaurantId = restaurant.id;
         } else {
-          // Insérer un nouveau restaurant
+          console.log('➕ INSERTING new restaurant with ID:', restaurant.id);
+          
+          // S'assurer que l'ID n'est pas null/undefined
+          if (!restaurant.id) {
+            throw new Error('❌ Restaurant ID is null/undefined: ' + restaurant.id);
+          }
+          
+          // Insérer un nouveau restaurant avec l'ID JavaScript (maintenant supporté avec BIGINT)
           const insertResult = await client.query(`
             INSERT INTO restaurants 
-            (name, cuisine_type_id, location, address, latitude, longitude, 
+            (id, name, cuisine_type_id, location, address, latitude, longitude, 
              price_range, photo_url, comment, status, reason, date_added, date_visited)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id
-          `, restaurantData);
+          `, [restaurant.id, ...restaurantData]);
           
           restaurantId = insertResult.rows[0].id;
+          console.log('✅ Inserted with ID:', restaurantId);
         }
 
         // 4. Gérer les notes pour les restaurants testés
