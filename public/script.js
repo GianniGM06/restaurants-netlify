@@ -459,63 +459,91 @@ class RestaurantApp {
         }, 200);
     }
 
-    async saveRestaurant() {
-        const form = document.getElementById('restaurant-form');
-        if (!form.checkValidity()) {
-            form.reportValidity();
-            return;
-        }
-        
-        const id = document.getElementById('restaurant-id').value;
-        const type = document.getElementById('restaurant-type').value;
-        const isEdit = !!id;
-        
-        // Traiter le type de cuisine
-        const cuisineInput = document.getElementById('restaurant-cuisine').value;
-        const cuisineType = this.addNewCuisineType(cuisineInput);
-        
-        const restaurantData = {
-            id: isEdit ? parseInt(id) : Date.now(),
-            name: document.getElementById('restaurant-name').value,
-            type: cuisineType,
-            location: document.getElementById('restaurant-location').value,
-            address: document.getElementById('restaurant-address').value,
-            priceRange: document.getElementById('restaurant-price').value,
-            photo: document.getElementById('restaurant-photo').value,
-            comment: document.getElementById('restaurant-comment').value,
-            dateAdded: isEdit ? this.data[type].find(r => r.id === parseInt(id)).dateAdded : new Date().toISOString().split('T')[0]
-        };
-        
-        if (type === 'tested') {
-            restaurantData.ratings = {
-                plats: parseFloat(document.getElementById('rating-plats').value),
-                vins: parseFloat(document.getElementById('rating-vins').value),
-                accueil: parseFloat(document.getElementById('rating-accueil').value),
-                lieu: parseFloat(document.getElementById('rating-lieu').value)
-            };
-            restaurantData.dateVisited = restaurantData.dateAdded;
-        } else {
-            restaurantData.reason = document.getElementById('restaurant-reason').value;
-        }
-        
-        // Ajouter/modifier dans les données
-        if (isEdit) {
-            const index = this.data[type].findIndex(r => r.id === parseInt(id));
-            this.data[type][index] = restaurantData;
-        } else {
-            this.data[type].push(restaurantData);
-        }
-        
-        // Fermer le modal et re-render immédiatement
-        bootstrap.Modal.getInstance(document.getElementById('restaurant-modal')).hide();
-        this.render();
-        
-        // Notification instantanée
-        this.showToast(isEdit ? '✅ Restaurant modifié !' : '✅ Restaurant ajouté !', 'success');
-        
-        // Sauvegarde automatique en arrière-plan
-        await this.autoSave();
+    // Dans la fonction saveRestaurant de script.js, remplace cette partie :
+
+async saveRestaurant() {
+    const form = document.getElementById('restaurant-form');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
     }
+    
+    const id = document.getElementById('restaurant-id').value;
+    const type = document.getElementById('restaurant-type').value;
+    const isEdit = !!id;
+    
+    console.log('🔍 === DEBUG JAVASCRIPT SAVE ===');
+    console.log('Form ID value:', id);
+    console.log('Is edit mode:', isEdit);
+    console.log('ID exists and not empty:', id && id.trim() !== '');
+    
+    // Traiter le type de cuisine
+    const cuisineInput = document.getElementById('restaurant-cuisine').value;
+    const cuisineType = this.addNewCuisineType(cuisineInput);
+    
+    // CORRECTION : Générer un ID valide
+    let restaurantId;
+    if (isEdit && id && id.trim() !== '') {
+        restaurantId = parseInt(id);
+        console.log('🔄 Using existing ID:', restaurantId);
+    } else {
+        restaurantId = Date.now();
+        console.log('➕ Generated new ID:', restaurantId);
+    }
+    
+    // Vérifier que l'ID est valide
+    if (!restaurantId || isNaN(restaurantId)) {
+        console.error('❌ Invalid ID generated:', restaurantId);
+        this.showToast('❌ Erreur génération ID', 'danger');
+        return;
+    }
+    
+    const restaurantData = {
+        id: restaurantId, // Utiliser l'ID corrigé
+        name: document.getElementById('restaurant-name').value,
+        type: cuisineType,
+        location: document.getElementById('restaurant-location').value,
+        address: document.getElementById('restaurant-address').value,
+        priceRange: document.getElementById('restaurant-price').value,
+        photo: document.getElementById('restaurant-photo').value,
+        comment: document.getElementById('restaurant-comment').value,
+        dateAdded: isEdit ? this.data[type].find(r => r.id === parseInt(id)).dateAdded : new Date().toISOString().split('T')[0]
+    };
+    
+    console.log('🔍 Final restaurant data:', restaurantData);
+    console.log('🔍 Restaurant ID type:', typeof restaurantData.id);
+    console.log('🔍 Restaurant ID value:', restaurantData.id);
+    
+    if (type === 'tested') {
+        restaurantData.ratings = {
+            plats: parseFloat(document.getElementById('rating-plats').value),
+            vins: parseFloat(document.getElementById('rating-vins').value),
+            accueil: parseFloat(document.getElementById('rating-accueil').value),
+            lieu: parseFloat(document.getElementById('rating-lieu').value)
+        };
+        restaurantData.dateVisited = restaurantData.dateAdded;
+    } else {
+        restaurantData.reason = document.getElementById('restaurant-reason').value;
+    }
+    
+    // Ajouter/modifier dans les données
+    if (isEdit) {
+        const index = this.data[type].findIndex(r => r.id === parseInt(id));
+        this.data[type][index] = restaurantData;
+    } else {
+        this.data[type].push(restaurantData);
+    }
+    
+    // Fermer le modal et re-render immédiatement
+    bootstrap.Modal.getInstance(document.getElementById('restaurant-modal')).hide();
+    this.render();
+    
+    // Notification instantanée
+    this.showToast(isEdit ? '✅ Restaurant modifié !' : '✅ Restaurant ajouté !', 'success');
+    
+    // Sauvegarde automatique en arrière-plan
+    await this.autoSave();
+}
 
     editRestaurant(id, type) {
         const restaurant = this.data[type].find(r => r.id === id);
@@ -1066,4 +1094,5 @@ function selectCuisine(cuisine) {
 
 function confirmTransfer() {
     if (app) app.confirmTransfer();
+
 }
