@@ -66,6 +66,7 @@ exports.handler = async (event, context) => {
         r.longitude,
         r.price_range,
         r.photo_url as photo,
+        r.google_maps_url,
         r.comment,
         r.status,
         r.reason,
@@ -105,6 +106,7 @@ exports.handler = async (event, context) => {
         address: row.address,
         priceRange: row.price_range,
         photo: row.photo_url,
+        googleMapsUrl: row.google_maps_url,
         comment: row.comment,
         dateAdded: row.date_added
       };

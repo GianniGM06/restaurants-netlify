@@ -610,178 +610,166 @@ class RestaurantApp {
 
   /* ===== CRÉATION DES CARDS ===== */
   createTestedCard(restaurant) {
-    const rating = this.calculateRating(restaurant.ratings);
-    const photo =
-      restaurant.photo ||
-      restaurant.photos?.[0] ||
-      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=250&fit=crop";
+  const rating = this.calculateRating(restaurant.ratings);
+  const photo =
+    restaurant.photo ||
+    restaurant.photos?.[0] ||
+    "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=250&fit=crop";
 
-    const editButtons = this.isEditMode
-      ? `
-            <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'tested')">
-                <i class="bi bi-pencil"></i> Modifier
-            </button>
-            <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'tested')">
-                <i class="bi bi-trash"></i> Supprimer
-            </button>
-        `
-      : "";
+  const editButtons = this.isEditMode
+    ? `
+          <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'tested')">
+              <i class="bi bi-pencil"></i> Modifier
+          </button>
+          <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'tested')">
+              <i class="bi bi-trash"></i> Supprimer
+          </button>
+      `
+    : "";
 
-    return `
-            <div class="col-md-6 mb-4">
-                <div class="card restaurant-card h-100">
-                    <img src="${photo}" class="card-img-top" alt="${
-      restaurant.name
-    }">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title">${restaurant.name}</h5>
-                            <span class="badge bg-primary">${
-                              restaurant.type
-                            }</span>
-                        </div>
-                        <p class="card-text text-muted">
-                            <i class="bi bi-geo-alt"></i> ${restaurant.location}
-                            <span class="ms-2">${
-                              restaurant.priceRange || "€€"
-                            }</span>
-                        </p>
-                        
-                        <div class="rating-section">
-                            <div class="row mb-2">
-                                <div class="col-8"><small>🍽️ Plats (x2)</small></div>
-                                <div class="col-4 text-end"><span class="stars">${this.generateStars(
-                                  restaurant.ratings.plats
-                                )}</span></div>
-                            </div>
-                            <div class="row mb-2">
-                                <div class="col-8"><small>🍷 Vins (x1.5)</small></div>
-                                <div class="col-4 text-end"><span class="stars">${this.generateStars(
-                                  restaurant.ratings.vins
-                                )}</span></div>
-                            </div>
-                            <div class="row mb-2">
-                                <div class="col-8"><small>😊 Accueil (x1.5)</small></div>
-                                <div class="col-4 text-end"><span class="stars">${this.generateStars(
-                                  restaurant.ratings.accueil
-                                )}</span></div>
-                            </div>
-                            <div class="row">
-                                <div class="col-8"><small>🏛️ Lieu (x1)</small></div>
-                                <div class="col-4 text-end"><span class="stars">${this.generateStars(
-                                  restaurant.ratings.lieu
-                                )}</span></div>
-                            </div>
-                        </div>
+  // Bouton Google Maps si l'URL est disponible
+  const googleMapsButton = restaurant.googleMapsUrl
+    ? `
+          <button class="btn btn-outline-success btn-action" onclick="window.open('${restaurant.googleMapsUrl}', '_blank')">
+              <i class="bi bi-geo-alt-fill"></i> Google Maps
+          </button>
+      `
+    : "";
 
-                        <div class="final-rating">
-                            <strong>${rating.toFixed(
-                              1
-                            )}/5</strong> ${this.generateStars(rating)}
-                        </div>
+  // Conteneur cliquable si Google Maps URL disponible
+  const cardClickableStart = restaurant.googleMapsUrl 
+    ? `<div class="card restaurant-card h-100" style="cursor: pointer;" onclick="window.open('${restaurant.googleMapsUrl}', '_blank')" title="Cliquer pour ouvrir dans Google Maps">` 
+    : `<div class="card restaurant-card h-100">`;
 
-                        ${
-                          restaurant.comment
-                            ? `<blockquote class="blockquote-footer mt-3">"${restaurant.comment}"</blockquote>`
-                            : ""
-                        }
+  return `
+          <div class="col-md-6 mb-4">
+              ${cardClickableStart}
+                  <img src="${photo}" class="card-img-top" alt="${restaurant.name}">
+                  <div class="card-body">
+                      <div class="d-flex justify-content-between align-items-start mb-2">
+                          <h5 class="card-title">${restaurant.name}</h5>
+                          <span class="badge bg-primary">${restaurant.type}</span>
+                      </div>
+                      <p class="card-text text-muted">
+                          <i class="bi bi-geo-alt"></i> ${restaurant.address || restaurant.location}
+                          <span class="ms-2">${restaurant.priceRange || "€€"}</span>
+                      </p>
+                      
+                      <div class="rating-section">
+                          <div class="row mb-2">
+                              <div class="col-8"><small>🍽️ Plats (x2)</small></div>
+                              <div class="col-4 text-end"><span class="stars">${this.generateStars(restaurant.ratings.plats)}</span></div>
+                          </div>
+                          <div class="row mb-2">
+                              <div class="col-8"><small>🍷 Vins (x1.5)</small></div>
+                              <div class="col-4 text-end"><span class="stars">${this.generateStars(restaurant.ratings.vins)}</span></div>
+                          </div>
+                          <div class="row mb-2">
+                              <div class="col-8"><small>😊 Accueil (x1.5)</small></div>
+                              <div class="col-4 text-end"><span class="stars">${this.generateStars(restaurant.ratings.accueil)}</span></div>
+                          </div>
+                          <div class="row">
+                              <div class="col-8"><small>🏛️ Lieu (x1)</small></div>
+                              <div class="col-4 text-end"><span class="stars">${this.generateStars(restaurant.ratings.lieu)}</span></div>
+                          </div>
+                      </div>
 
-                        <div class="action-buttons">
-                            ${editButtons}
-                            ${
-                              restaurant.coordinates
-                                ? `
-                            <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
-                                <i class="bi bi-geo-alt"></i> Carte
-                            </button>
-                            `
-                                : ""
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-  }
+                      <div class="final-rating">
+                          <strong>${rating.toFixed(1)}/5</strong> ${this.generateStars(rating)}
+                      </div>
+
+                      ${restaurant.comment ? `<blockquote class="blockquote-footer mt-3">"${restaurant.comment}"</blockquote>` : ""}
+
+                      <div class="action-buttons" onclick="event.stopPropagation();">
+                          ${editButtons}
+                          ${googleMapsButton}
+                          ${restaurant.coordinates ? `
+                          <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
+                              <i class="bi bi-geo-alt"></i> Carte
+                          </button>
+                          ` : ""}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      `;
+}
 
   createWishlistCard(restaurant) {
-    const photo =
-      restaurant.photo ||
-      restaurant.photos?.[0] ||
-      "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=250&fit=crop";
+  const photo =
+    restaurant.photo ||
+    restaurant.photos?.[0] ||
+    "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=250&fit=crop";
 
-    const editButtons = this.isEditMode
-      ? `
-            <button class="btn btn-success btn-action" onclick="app.moveToTested(${restaurant.id})">
-                <i class="bi bi-arrow-right"></i> Testé !
-            </button>
-            <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'wishlist')">
-                <i class="bi bi-pencil"></i> Modifier
-            </button>
-            <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'wishlist')">
-                <i class="bi bi-trash"></i> Supprimer
-            </button>
-        `
-      : `
-            <button class="btn btn-outline-secondary btn-action" disabled>
-                <i class="bi bi-lock"></i> Mode lecture
-            </button>
-        `;
+  const editButtons = this.isEditMode
+    ? `
+          <button class="btn btn-success btn-action" onclick="app.moveToTested(${restaurant.id})">
+              <i class="bi bi-arrow-right"></i> Testé !
+          </button>
+          <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'wishlist')">
+              <i class="bi bi-pencil"></i> Modifier
+          </button>
+          <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'wishlist')">
+              <i class="bi bi-trash"></i> Supprimer
+          </button>
+      `
+    : `
+          <button class="btn btn-outline-secondary btn-action" disabled>
+              <i class="bi bi-lock"></i> Mode lecture
+          </button>
+      `;
 
-    return `
-            <div class="col-md-6 mb-4">
-                <div class="card restaurant-card wishlist-card h-100">
-                    <img src="${photo}" class="card-img-top" alt="${
-      restaurant.name
-    }">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title">${restaurant.name}</h5>
-                            <span class="badge bg-success">${
-                              restaurant.type
-                            }</span>
-                        </div>
-                        <p class="card-text text-muted">
-                            <i class="bi bi-geo-alt"></i> ${restaurant.location}
-                            <span class="ms-2">${
-                              restaurant.priceRange || "€€"
-                            }</span>
-                        </p>
-                        
-                        ${
-                          restaurant.reason
-                            ? `
-                        <div class="alert alert-success">
-                            <strong>💡 Pourquoi :</strong><br>
-                            ${restaurant.reason}
-                        </div>
-                        `
-                            : ""
-                        }
+  // Bouton Google Maps si l'URL est disponible
+  const googleMapsButton = restaurant.googleMapsUrl
+    ? `
+          <button class="btn btn-outline-success btn-action" onclick="window.open('${restaurant.googleMapsUrl}', '_blank')">
+              <i class="bi bi-geo-alt-fill"></i> Google Maps
+          </button>
+      `
+    : "";
 
-                        ${
-                          restaurant.comment
-                            ? `<p class="text-muted"><em>"${restaurant.comment}"</em></p>`
-                            : ""
-                        }
+  // Conteneur cliquable si Google Maps URL disponible
+  const cardClickableStart = restaurant.googleMapsUrl 
+    ? `<div class="card restaurant-card wishlist-card h-100" style="cursor: pointer;" onclick="window.open('${restaurant.googleMapsUrl}', '_blank')" title="Cliquer pour ouvrir dans Google Maps">` 
+    : `<div class="card restaurant-card wishlist-card h-100">`;
 
-                        <div class="action-buttons">
-                            ${editButtons}
-                            ${
-                              restaurant.coordinates
-                                ? `
-                            <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
-                                <i class="bi bi-geo-alt"></i> Carte
-                            </button>
-                            `
-                                : ""
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-  }
+  return `
+          <div class="col-md-6 mb-4">
+              ${cardClickableStart}
+                  <img src="${photo}" class="card-img-top" alt="${restaurant.name}">
+                  <div class="card-body">
+                      <div class="d-flex justify-content-between align-items-start mb-2">
+                          <h5 class="card-title">${restaurant.name}</h5>
+                          <span class="badge bg-success">${restaurant.type}</span>
+                      </div>
+                      <p class="card-text text-muted">
+                          <i class="bi bi-geo-alt"></i> ${restaurant.address || restaurant.location}
+                          <span class="ms-2">${restaurant.priceRange || "€€"}</span>
+                      </p>
+                      
+                      ${restaurant.reason ? `
+                      <div class="alert alert-success">
+                          <strong>💡 Pourquoi :</strong><br>
+                          ${restaurant.reason}
+                      </div>
+                      ` : ""}
+
+                      ${restaurant.comment ? `<p class="text-muted"><em>"${restaurant.comment}"</em></p>` : ""}
+
+                      <div class="action-buttons" onclick="event.stopPropagation();">
+                          ${editButtons}
+                          ${googleMapsButton}
+                          ${restaurant.coordinates ? `
+                          <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
+                              <i class="bi bi-geo-alt"></i> Carte
+                          </button>
+                          ` : ""}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      `;
+}
 
   createEmptyState(type) {
     const isWishlist = type === "wishlist";
@@ -895,19 +883,20 @@ class RestaurantApp {
     }
 
     const restaurantData = {
-      id: restaurantId, // Utiliser l'ID corrigé
-      name: document.getElementById("restaurant-name").value,
-      type: cuisineType,
-      location: document.getElementById("restaurant-location").value,
-      address: document.getElementById("restaurant-address").value,
-      priceRange: document.getElementById("restaurant-price").value,
-      photo: document.getElementById("restaurant-photo").value,
-      comment: document.getElementById("restaurant-comment").value,
-      dateAdded: isEdit
-        ? this.data[type].find((r) => r.id == id)?.dateAdded ||
-          new Date().toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0],
-    };
+  id: restaurantId,
+  name: document.getElementById("restaurant-name").value,
+  type: cuisineType,
+  location: document.getElementById("restaurant-location").value,
+  address: document.getElementById("restaurant-address").value,
+  priceRange: document.getElementById("restaurant-price").value,
+  photo: document.getElementById("restaurant-photo").value,
+  googleMapsUrl: document.getElementById("restaurant-google-maps").value,  // ← NOUVELLE LIGNE
+  comment: document.getElementById("restaurant-comment").value,
+  dateAdded: isEdit
+    ? this.data[type].find((r) => r.id == id)?.dateAdded ||
+      new Date().toISOString().split("T")[0]
+    : new Date().toISOString().split("T")[0],
+};
 
     console.log("🔍 Final restaurant data:", restaurantData);
     console.log("🔍 Restaurant ID type:", typeof restaurantData.id);
@@ -989,6 +978,7 @@ class RestaurantApp {
     document.getElementById("restaurant-price").value =
       restaurant.priceRange || "€€";
     document.getElementById("restaurant-photo").value = restaurant.photo || "";
+    document.getElementById("restaurant-google-maps").value = restaurant.googleMapsUrl || "";
     document.getElementById("restaurant-comment").value =
       restaurant.comment || "";
 
@@ -1634,6 +1624,7 @@ async confirmDelete() {
         dateVisited: "2024-12-15",
         dateAdded: "2024-12-15",
         priceRange: "€€",
+        googleMapsUrl: "https://maps.google.com/?q=Le+Comptoir+du+Relais+Paris",
         photo:
           "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop",
       },
@@ -1652,6 +1643,7 @@ async confirmDelete() {
         reason: "Recommandé par un ami pour la cuisine basque",
         dateAdded: "2024-12-01",
         priceRange: "€€€",
+        googleMapsUrl: "https://maps.google.com/?q=Le+Comptoir+du+Relais+Paris",
         photo:
           "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=250&fit=crop",
       },

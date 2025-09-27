@@ -668,15 +668,23 @@
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Adresse complète</label>
-                                <input type="text" class="form-control" id="restaurant-address" placeholder="Pour la géolocalisation">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Photo (URL)</label>
-                                <input type="url" class="form-control" id="restaurant-photo" placeholder="https://...">
-                            </div>
-                        </div>
+    <div class="col-md-6">
+        <label class="form-label">Adresse complète</label>
+        <input type="text" class="form-control" id="restaurant-address" placeholder="Pour la géolocalisation">
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">Lien Google Maps</label>
+        <input type="url" class="form-control" id="restaurant-google-maps" placeholder="https://maps.google.com/...">
+        <small class="form-text text-muted">Rendra la carte cliquable vers Google Maps</small>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-12">
+        <label class="form-label">Photo (URL)</label>
+        <input type="url" class="form-control" id="restaurant-photo" placeholder="https://...">
+    </div>
+</div>
 
                         <!-- Section notes (restaurants testés) -->
                         <div id="ratings-section" style="display: none;">

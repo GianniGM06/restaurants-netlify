@@ -99,15 +99,19 @@ exports.handler = async (event, context) => {
               UPDATE restaurants SET 
                 name = $1, 
                 cuisine_type_id = $2, 
-                location = $3, 
-                comment = $4, 
-                status = $5,
+                location = $3,
+                address = $4,
+                google_maps_url = $5,
+                comment = $6, 
+                status = $7,
                 updated_at = CURRENT_TIMESTAMP
-              WHERE id = $6
+              WHERE id = $8
             `, [
               restaurant.name,
               cuisineTypeId,
               restaurant.location,
+              restaurant.address || null,
+              restaurant.googleMapsUrl || null,
               restaurant.comment || null,
               'tested',
               restaurant.id
@@ -117,13 +121,15 @@ exports.handler = async (event, context) => {
             console.log('➕ Nouveau restaurant:', restaurant.id);
             await client.query(`
               INSERT INTO restaurants 
-              (id, name, cuisine_type_id, location, comment, status, date_added)
-              VALUES ($1, $2, $3, $4, $5, $6, $7)
+              (id, name, cuisine_type_id, location, address, google_maps_url, comment, status, date_added)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             `, [
               restaurant.id,
               restaurant.name,
               cuisineTypeId,
               restaurant.location,
+              restaurant.address || null,
+              restaurant.googleMapsUrl || null,
               restaurant.comment || null,
               'tested',
               restaurant.dateAdded || new Date().toISOString().split('T')[0]
@@ -191,16 +197,20 @@ exports.handler = async (event, context) => {
               UPDATE restaurants SET 
                 name = $1, 
                 cuisine_type_id = $2, 
-                location = $3, 
-                comment = $4, 
-                reason = $5,
-                status = $6,
+                location = $3,
+                address = $4,
+                google_maps_url = $5,
+                comment = $6, 
+                reason = $7,
+                status = $8,
                 updated_at = CURRENT_TIMESTAMP
-              WHERE id = $7
+              WHERE id = $9
             `, [
               restaurant.name,
               cuisineTypeId,
               restaurant.location,
+              restaurant.address || null,
+              restaurant.googleMapsUrl || null,
               restaurant.comment || null,
               restaurant.reason || null,
               'wishlist',
@@ -210,13 +220,15 @@ exports.handler = async (event, context) => {
             // Insérer nouveau
             await client.query(`
               INSERT INTO restaurants 
-              (id, name, cuisine_type_id, location, comment, reason, status, date_added)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              (id, name, cuisine_type_id, location, address, google_maps_url, comment, reason, status, date_added)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             `, [
               restaurant.id,
               restaurant.name,
               cuisineTypeId,
               restaurant.location,
+              restaurant.address || null,
+              restaurant.googleMapsUrl || null,
               restaurant.comment || null,
               restaurant.reason || null,
               'wishlist',
