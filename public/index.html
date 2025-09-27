@@ -574,6 +574,68 @@
                 </ul>
             </div>
 
+            <!-- Barre de filtres (à insérer après les onglets de navigation et avant le contenu des onglets) -->
+<div class="filters-container" id="filters-container">
+    <div class="container">
+        <div class="filters-row">
+            <!-- Filtre Type de cuisine -->
+            <div class="filter-group">
+                <label class="filter-label">🍽️ Cuisine :</label>
+                <select class="filter-dropdown" id="cuisine-filter" multiple>
+                    <option value="">Toutes les cuisines</option>
+                    <!-- Options générées dynamiquement -->
+                </select>
+            </div>
+
+            <!-- Filtre Prix -->
+            <div class="filter-group">
+                <label class="filter-label">💰 Prix :</label>
+                <div class="price-checkboxes">
+                    <label class="price-checkbox" data-price="€">
+                        <input type="checkbox" value="€">
+                        <span>€</span>
+                    </label>
+                    <label class="price-checkbox" data-price="€€">
+                        <input type="checkbox" value="€€">
+                        <span>€€</span>
+                    </label>
+                    <label class="price-checkbox" data-price="€€€">
+                        <input type="checkbox" value="€€€">
+                        <span>€€€</span>
+                    </label>
+                    <label class="price-checkbox" data-price="€€€€">
+                        <input type="checkbox" value="€€€€">
+                        <span>€€€€</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Filtre Localisation -->
+            <div class="filter-group">
+                <label class="filter-label">📍 Lieu :</label>
+                <select class="filter-dropdown" id="location-filter" multiple>
+                    <option value="">Toutes les localisations</option>
+                    <!-- Options générées dynamiquement -->
+                </select>
+            </div>
+
+            <!-- Actions et compteur -->
+            <div class="filters-actions">
+                <span class="results-count" id="results-count">-- restaurants</span>
+                <button class="clear-filters-btn" id="clear-filters-btn" disabled>
+                    <i class="bi bi-x-circle"></i> Effacer
+                </button>
+            </div>
+        </div>
+
+        <!-- Badges des cuisines sélectionnées -->
+        <div class="cuisine-badges" id="cuisine-badges"></div>
+        
+        <!-- Badges des localisations sélectionnées -->
+        <div class="location-badges" id="location-badges"></div>
+    </div>
+</div>
+
             <!-- Tab Content -->
             <div class="tab-content p-4" id="mainTabContent">
                 <!-- Tested Restaurants -->
@@ -644,7 +706,6 @@
                                     </div>
                                     <i class="bi bi-chevron-down position-absolute" style="right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #6c757d;"></i>
                                 </div>
-                                <small class="form-text text-muted">Tapez pour chercher ou ajouter un nouveau type</small>
                             </div>
                         </div>
 
@@ -675,7 +736,6 @@
     <div class="col-md-6">
         <label class="form-label">Lien Google Maps</label>
         <input type="url" class="form-control" id="restaurant-google-maps" placeholder="https://maps.google.com/...">
-        <small class="form-text text-muted">Rendra la carte cliquable vers Google Maps</small>
     </div>
 </div>
 
