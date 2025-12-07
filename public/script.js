@@ -1581,13 +1581,9 @@ setupFilters() {
 }
 
 populateFilterOptions() {
-    // Populer les options de cuisine
-    const cuisineSelect = document.getElementById('cuisine-filter');
-    const locationSelect = document.getElementById('location-filter');
+    console.log('📋 Début populateFilterOptions...');
     
-    if (!cuisineSelect || !locationSelect) return;
-    
-    // Récupérer toutes les cuisines uniques
+    // Récupérer toutes les cuisines et localisations uniques
     const allCuisines = new Set();
     const allLocations = new Set();
     
@@ -1596,23 +1592,54 @@ populateFilterOptions() {
         allLocations.add(restaurant.location);
     });
     
-    // Vider et repeupler cuisine
-    cuisineSelect.innerHTML = '<option value="">Toutes les cuisines</option>';
-    Array.from(allCuisines).sort().forEach(cuisine => {
-        const option = document.createElement('option');
-        option.value = cuisine;
-        option.textContent = cuisine;
-        cuisineSelect.appendChild(option);
-    });
+    console.log('🍽️ Cuisines trouvées:', Array.from(allCuisines));
+    console.log('📍 Localisations trouvées:', Array.from(allLocations));
     
-    // Vider et repeupler localisation
-    locationSelect.innerHTML = '<option value="">Toutes les localisations</option>';
-    Array.from(allLocations).sort().forEach(location => {
-        const option = document.createElement('option');
-        option.value = location;
-        option.textContent = location;
-        locationSelect.appendChild(option);
-    });
+    // Populer le dropdown cuisine
+    const cuisineMenu = document.getElementById('cuisine-dropdown-menu');
+    console.log('🔍 Element cuisine-dropdown-menu:', cuisineMenu);
+    
+    if (cuisineMenu) {
+        const html = Array.from(allCuisines).sort().map(cuisine => {
+            const cuisineData = this.data.cuisineTypes.find(c => c.value === cuisine);
+            const emoji = cuisineData ? cuisineData.emoji : '🍽️';
+            return `
+                <li>
+                    <a class="dropdown-item" href="#" data-value="${cuisine}">
+                        <input type="checkbox" class="form-check-input me-2" value="${cuisine}">
+                        <span>${emoji} ${cuisine}</span>
+                    </a>
+                </li>
+            `;
+        }).join('');
+        
+        console.log('✅ HTML généré pour cuisines:', html.length, 'caractères');
+        cuisineMenu.innerHTML = html;
+    } else {
+        console.error('❌ Element cuisine-dropdown-menu NON TROUVÉ !');
+    }
+    
+    // Populer le dropdown localisation
+    const locationMenu = document.getElementById('location-dropdown-menu');
+    console.log('🔍 Element location-dropdown-menu:', locationMenu);
+    
+    if (locationMenu) {
+        const html = Array.from(allLocations).sort().map(location => `
+            <li>
+                <a class="dropdown-item" href="#" data-value="${location}">
+                    <input type="checkbox" class="form-check-input me-2" value="${location}">
+                    <span>📍 ${location}</span>
+                </a>
+            </li>
+        `).join('');
+        
+        console.log('✅ HTML généré pour locations:', html.length, 'caractères');
+        locationMenu.innerHTML = html;
+    } else {
+        console.error('❌ Element location-dropdown-menu NON TROUVÉ !');
+    }
+    
+    console.log('✅ Fin populateFilterOptions');
 }
 
 setupFilterEvents() {
