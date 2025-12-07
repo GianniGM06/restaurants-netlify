@@ -545,6 +545,57 @@ body {
 
 /* ===== FILTRES - VERSION CORRIGÉE AVEC PRIORITÉ ===== */
 
+/* Dropdowns des filtres */
+.filter-dropdown-btn {
+    min-width: 180px !important;
+    text-align: left !important;
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.9rem !important;
+    border: 2px solid #ced4da !important;
+    border-radius: 8px !important;
+    background: white !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+.filter-dropdown-btn:hover,
+.filter-dropdown-btn:focus {
+    border-color: var(--bs-primary) !important;
+    background: white !important;
+    color: #212529 !important;
+}
+
+.filter-dropdown-menu {
+    max-height: 300px !important;
+    overflow-y: auto !important;
+    min-width: 200px !important;
+    padding: 0.5rem !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+
+.filter-dropdown-menu .dropdown-item {
+    padding: 0.5rem 0.75rem !important;
+    cursor: pointer !important;
+    border-radius: 5px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    margin-bottom: 0.25rem !important;
+}
+
+.filter-dropdown-menu .dropdown-item:hover {
+    background-color: #f8f9fa !important;
+}
+
+.filter-dropdown-menu .dropdown-item input[type="checkbox"] {
+    cursor: pointer !important;
+}
+
+.filter-dropdown-menu .dropdown-item.active {
+    background-color: #e7f3ff !important;
+    font-weight: 500 !important;
+}
+
 /* Container principal des filtres */
 .main-container .filters-container {
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;

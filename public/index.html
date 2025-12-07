@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
     
     <style>
         /* ===== VARIABLES CSS ===== */
@@ -575,16 +577,21 @@
             </div>
 
             <!-- Barre de filtres (à insérer après les onglets de navigation et avant le contenu des onglets) -->
+<!-- Barre de filtres -->
 <div class="filters-container" id="filters-container">
     <div class="container">
         <div class="filters-row">
             <!-- Filtre Type de cuisine -->
             <div class="filter-group">
                 <label class="filter-label">🍽️ Cuisine :</label>
-                <select class="filter-dropdown" id="cuisine-filter" multiple>
-                    <option value="">Toutes les cuisines</option>
-                    <!-- Options générées dynamiquement -->
-                </select>
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary dropdown-toggle filter-dropdown-btn" type="button" id="cuisineDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                        Choisir...
+                    </button>
+                    <ul class="dropdown-menu filter-dropdown-menu" id="cuisine-dropdown-menu" aria-labelledby="cuisineDropdownBtn">
+                        <!-- Options générées dynamiquement -->
+                    </ul>
+                </div>
             </div>
 
             <!-- Filtre Prix -->
@@ -613,10 +620,14 @@
             <!-- Filtre Localisation -->
             <div class="filter-group">
                 <label class="filter-label">📍 Lieu :</label>
-                <select class="filter-dropdown" id="location-filter" multiple>
-                    <option value="">Toutes les localisations</option>
-                    <!-- Options générées dynamiquement -->
-                </select>
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary dropdown-toggle filter-dropdown-btn" type="button" id="locationDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                        Choisir...
+                    </button>
+                    <ul class="dropdown-menu filter-dropdown-menu" id="location-dropdown-menu" aria-labelledby="locationDropdownBtn">
+                        <!-- Options générées dynamiquement -->
+                    </ul>
+                </div>
             </div>
 
             <!-- Actions et compteur -->
