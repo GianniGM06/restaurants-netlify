@@ -365,6 +365,10 @@ class RestaurantApp {
         cuisines: this.data.cuisineTypes.length,
       });
 
+      // ✨ NOUVEAU : Populer les dropdowns ICI, juste après avoir les données
+        this.populateFilterOptions();
+        console.log("✅ Options de filtres peuplées");
+
       // Afficher info de mise à jour
       if (jsonData.metadata?.lastUpdated) {
         const lastUpdate = new Date(jsonData.metadata.lastUpdated);
