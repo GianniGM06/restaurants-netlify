@@ -495,6 +495,16 @@ body {
     }
 }
 
+/* Bouton géolocalisation */
+#geolocate-btn {
+    transition: all 0.3s ease;
+}
+
+#geolocate-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
 /* ===== ANIMATIONS ===== */
 @keyframes fadeInUp {
     from {
@@ -847,4 +857,101 @@ body {
         flex: 1 !important;
         max-width: 60px !important;
     }
+}
+
+/* ===== GALERIE PHOTOS ===== */
+.photo-gallery {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 10px 0;
+    scroll-behavior: smooth;
+}
+
+.photo-gallery::-webkit-scrollbar {
+    height: 8px;
+}
+
+.photo-gallery::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.photo-gallery::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+.photo-gallery::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.photo-item {
+    flex: 0 0 auto;
+    width: 120px;
+    height: 120px;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.photo-item:hover {
+    transform: scale(1.05);
+}
+
+.photo-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.empty-gallery {
+    text-align: center;
+    padding: 2rem;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Photo input dans le modal */
+.photo-input-group {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    background: #f8f9fa;
+}
+
+.photo-preview {
+    width: 100px;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 2px solid #dee2e6;
+}
+
+/* Note finale compacte */
+.final-rating-compact {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0.5rem;
+}
+
+.final-rating-compact .rating-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.final-rating-compact .rating-item .icon {
+    font-size: 1.2rem;
+}
+
+.final-rating-compact .rating-item .value {
+    font-weight: bold;
+    font-size: 0.9rem;
 }

@@ -87,6 +87,11 @@ class RestaurantApp {
 
     this.isEditMode = false; // Par défaut en lecture, devient true avec auth GitHub
     this.map = null;
+    this.userMarker = null;
+    this.userPosition = null;
+    this.restaurantMarkers = [];
+    this.currentPhotos = [];
+    this.currentPhotoIndex = 0;
 
     // NOUVEAU : État des filtres
     this.filters = {
@@ -294,6 +299,14 @@ class RestaurantApp {
     return modal;
   }
 
+  openFAQ() {
+    const modal = document.getElementById("faq-modal");
+    if (modal) {
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
+}
+
   async githubLogin() {
     const tokenInput = document.getElementById("github-token-input");
     const token = tokenInput?.value?.trim();
@@ -493,6 +506,12 @@ class RestaurantApp {
           '<i class="bi bi-arrow-clockwise"></i> Actualiser';
       }
 
+      // Bouton FAQ
+    const faqBtn = document.getElementById("faq-btn");
+if (faqBtn) {
+    faqBtn.onclick = () => this.openFAQ();
+}
+
       // Boutons d'ajout (visibles seulement en mode édition)
       const addTestedBtn = document.getElementById("add-tested");
       if (addTestedBtn) {
@@ -555,6 +574,23 @@ class RestaurantApp {
           setTimeout(() => this.initMap(), 100);
         });
       }
+
+      // Bouton géolocalisation dans la carte
+const geolocateBtn = document.getElementById("geolocate-btn");
+if (geolocateBtn) {
+    geolocateBtn.onclick = () => this.activateGeolocation();
+}
+
+// Bouton "Restaurants près de moi" dans hero
+const nearbyBtn = document.getElementById("nearby-restaurants-btn");
+if (nearbyBtn) {
+    nearbyBtn.onclick = () => {
+        // Activer l'onglet carte
+        document.getElementById('map-tab').click();
+        // Attendre que la carte soit chargée puis activer la géolocalisation
+        setTimeout(() => this.activateGeolocation(), 200);
+    };
+}
 
       // Événements pour les onglets (persistance des filtres)
     const tabs = document.querySelectorAll('#mainTabs .nav-link');
@@ -637,8 +673,8 @@ class RestaurantApp {
 
   /* ===== CRÉATION DES CARDS ===== */
   createTestedCard(restaurant) {
-    const rating = this.calculateRating(restaurant.ratings);
-    const photo = restaurant.photo || restaurant.photos?.[0] || 
+    const rating = this.calculateRating(restaurant.ratings, restaurant.winesNotTested);
+    const photo = restaurant.photo || restaurant.photos?.[0]?.url || 
         "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=250&fit=crop";
 
     const editButtons = this.isEditMode ? `
@@ -650,15 +686,29 @@ class RestaurantApp {
         </button>
     ` : "";
 
-    // Conteneur cliquable si Google Maps URL disponible
-    const cardClickableStart = restaurant.googleMapsUrl ? 
-        `<div class="card restaurant-card h-100" style="cursor: pointer;" onclick="window.open('${restaurant.googleMapsUrl}', '_blank')" title="Cliquer pour ouvrir dans Google Maps">` : 
-        `<div class="card restaurant-card h-100">`;
+    // Générer la galerie photos
+    const photoGallery = restaurant.photos && restaurant.photos.length > 0 ? `
+        <div class="photo-gallery">
+            ${restaurant.photos.map((photo, index) => `
+                <div class="photo-item" onclick="app.openLightbox(${restaurant.id}, ${index})">
+                    <img src="${photo.url}" alt="Photo ${index + 1}" onerror="this.src='https://via.placeholder.com/120?text=Error'">
+                </div>
+            `).join('')}
+        </div>
+    ` : `
+        <div class="empty-gallery">
+            <i class="bi bi-camera"></i>
+            <p class="mb-0">Aucune photo ajoutée</p>
+        </div>
+    `;
 
     return `
         <div class="col-md-6 mb-4">
-            ${cardClickableStart}
-                <img src="${photo}" class="card-img-top" alt="${restaurant.name}">
+            <div class="card restaurant-card h-100">
+                <img src="${photo}" class="card-img-top" alt="${restaurant.name}" 
+                     style="cursor: pointer;" 
+                     onclick="window.open('${restaurant.googleMapsUrl}', '_blank')" 
+                     title="Cliquer pour ouvrir dans Google Maps">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <h5 class="card-title">${restaurant.name}</h5>
@@ -669,32 +719,43 @@ class RestaurantApp {
                         <span class="ms-2">${restaurant.priceRange || "€€"}</span>
                     </p>
                     
-                    <div class="rating-section">
-                        <div class="row mb-2">
-                            <div class="col-8"><small>🍽️ Plats (x2)</small></div>
-                            <div class="col-4 text-end"><span class="stars">${this.generateStars(restaurant.ratings.plats)}</span></div>
-                        </div>
-                        <div class="row mb-2">
-                            <div class="col-8"><small>🍷 Vins (x1.5)</small></div>
-                            <div class="col-4 text-end"><span class="stars">${this.generateStars(restaurant.ratings.vins)}</span></div>
-                        </div>
-                        <div class="row mb-2">
-                            <div class="col-8"><small>😊 Accueil (x1.5)</small></div>
-                            <div class="col-4 text-end"><span class="stars">${this.generateStars(restaurant.ratings.accueil)}</span></div>
-                        </div>
-                        <div class="row">
-                            <div class="col-8"><small>🏛️ Lieu (x1)</small></div>
-                            <div class="col-4 text-end"><span class="stars">${this.generateStars(restaurant.ratings.lieu)}</span></div>
-                        </div>
-                    </div>
+                    ${photoGallery}
 
-                    <div class="final-rating">
-                        <strong>${rating.toFixed(1)}/5</strong> ${this.generateStars(rating)}
+                    <div class="final-rating" id="final-rating-${restaurant.id}">
+                        <div class="rating-simple">
+                            <strong>${rating.toFixed(1)}/5</strong> ${this.generateStars(rating)}
+                            <button class="btn btn-sm btn-outline-light ms-2" onclick="app.toggleRatingDetail(${restaurant.id})">
+                                Détails
+                            </button>
+                        </div>
+                        <div class="rating-detailed" style="display: none;">
+                            <div class="final-rating-compact">
+                                <div class="rating-item">
+                                    <span class="icon">🍽️</span>
+                                    <span class="value">${restaurant.ratings.plats.toFixed(1)}</span>
+                                </div>
+                                ${restaurant.winesNotTested ? 
+                                    '<div class="rating-item"><span class="icon">🍷</span><span class="value text-muted">N/A</span></div>' :
+                                    `<div class="rating-item"><span class="icon">🍷</span><span class="value">${restaurant.ratings.vins.toFixed(1)}</span></div>`
+                                }
+                                <div class="rating-item">
+                                    <span class="icon">😊</span>
+                                    <span class="value">${restaurant.ratings.accueil.toFixed(1)}</span>
+                                </div>
+                                <div class="rating-item">
+                                    <span class="icon">🏛️</span>
+                                    <span class="value">${restaurant.ratings.lieu.toFixed(1)}</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-light mt-2" onclick="app.toggleRatingDetail(${restaurant.id})">
+                                Note
+                            </button>
+                        </div>
                     </div>
 
                     ${restaurant.comment ? `<blockquote class="blockquote-footer mt-3">"${restaurant.comment}"</blockquote>` : ""}
 
-                    <div class="action-buttons" onclick="event.stopPropagation();">
+                    <div class="action-buttons">
                         ${editButtons}
                         ${restaurant.coordinates ? `
                         <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
@@ -706,7 +767,7 @@ class RestaurantApp {
             </div>
         </div>
     `;
-  }
+}
 
   createWishlistCard(restaurant) {
     const photo = restaurant.photo || restaurant.photos?.[0] || 
@@ -770,6 +831,51 @@ class RestaurantApp {
     `;
   }
 
+  toggleRatingDetail(restaurantId) {
+    const container = document.getElementById(`final-rating-${restaurantId}`);
+    if (!container) return;
+
+    const simple = container.querySelector('.rating-simple');
+    const detailed = container.querySelector('.rating-detailed');
+
+    if (simple.style.display === 'none') {
+        simple.style.display = 'block';
+        detailed.style.display = 'none';
+    } else {
+        simple.style.display = 'none';
+        detailed.style.display = 'block';
+    }
+}
+
+openLightbox(restaurantId, photoIndex) {
+    const restaurant = this.data.tested.find(r => r.id === restaurantId);
+    if (!restaurant || !restaurant.photos || restaurant.photos.length === 0) return;
+
+    this.currentPhotos = restaurant.photos;
+    this.currentPhotoIndex = photoIndex;
+
+    this.showPhotoInLightbox();
+
+    const modal = new bootstrap.Modal(document.getElementById('photo-lightbox-modal'));
+    modal.show();
+}
+
+showPhotoInLightbox() {
+    const photo = this.currentPhotos[this.currentPhotoIndex];
+    document.getElementById('lightbox-image').src = photo.url;
+    document.getElementById('lightbox-comment').textContent = photo.comment || '';
+}
+
+previousPhoto() {
+    this.currentPhotoIndex = (this.currentPhotoIndex - 1 + this.currentPhotos.length) % this.currentPhotos.length;
+    this.showPhotoInLightbox();
+}
+
+nextPhoto() {
+    this.currentPhotoIndex = (this.currentPhotoIndex + 1) % this.currentPhotos.length;
+    this.showPhotoInLightbox();
+}
+
   createEmptyState(type) {
     const isWishlist = type === "wishlist";
     const icon = isWishlist ? "heart" : "star";
@@ -831,6 +937,14 @@ class RestaurantApp {
     document.getElementById("wishlist-section").style.display =
       type === "wishlist" ? "block" : "none";
 
+    // Section photos visible seulement pour les restaurants testés
+document.getElementById("photos-section").style.display =
+    type === "tested" ? "block" : "none";
+
+// Réinitialiser les photos
+this.currentPhotos = [];
+this.renderPhotoInputs();
+
     modal.show();
 
     // Setup après ouverture du modal
@@ -839,6 +953,68 @@ class RestaurantApp {
       this.setupCuisineAutocomplete();
     }, 200);
   }
+
+  addPhotoInput() {
+    if (this.currentPhotos.length >= 10) {
+        this.showToast('❌ Maximum 10 photos par restaurant', 'warning');
+        return;
+    }
+
+    const photo = { url: '', comment: '' };
+    this.currentPhotos.push(photo);
+    this.renderPhotoInputs();
+}
+
+removePhotoInput(index) {
+    this.currentPhotos.splice(index, 1);
+    this.renderPhotoInputs();
+}
+
+renderPhotoInputs() {
+    const container = document.getElementById('photos-container');
+    if (!container) return;
+
+    container.innerHTML = this.currentPhotos.map((photo, index) => `
+        <div class="photo-input-group">
+            <div class="row align-items-center">
+                <div class="col-md-2">
+                    ${photo.url ? `<img src="${photo.url}" class="photo-preview" onerror="this.src='https://via.placeholder.com/100?text=Error'">` : 
+                    `<div class="photo-preview d-flex align-items-center justify-content-center bg-light">
+                        <i class="bi bi-image text-muted"></i>
+                    </div>`}
+                </div>
+                <div class="col-md-10">
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">URL de la photo</label>
+                        <input type="url" class="form-control form-control-sm" 
+                               value="${photo.url}" 
+                               onchange="app.updatePhotoUrl(${index}, this.value)"
+                               placeholder="https://i.imgur.com/...">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">Commentaire (optionnel)</label>
+                        <input type="text" class="form-control form-control-sm" 
+                               value="${photo.comment}" 
+                               onchange="app.updatePhotoComment(${index}, this.value)"
+                               placeholder="Description de la photo">
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="app.removePhotoInput(${index})">
+                        <i class="bi bi-trash"></i> Supprimer
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+updatePhotoUrl(index, url) {
+    this.currentPhotos[index].url = url;
+    this.renderPhotoInputs();
+}
+
+updatePhotoComment(index, comment) {
+    this.currentPhotos[index].comment = comment;
+}
 
   async saveRestaurant() {
     // Vérifier les permissions d'édition
@@ -891,6 +1067,7 @@ class RestaurantApp {
   photo: document.getElementById("restaurant-photo").value,
   googleMapsUrl: document.getElementById("restaurant-google-maps").value,  // ← NOUVELLE LIGNE
   comment: document.getElementById("restaurant-comment").value,
+  photos: type === "tested" ? this.currentPhotos.filter(p => p.url) : [],
   dateAdded: isEdit
     ? this.data[type].find((r) => r.id == id)?.dateAdded ||
       new Date().toISOString().split("T")[0]
@@ -902,12 +1079,15 @@ class RestaurantApp {
     console.log("🔍 Restaurant ID value:", restaurantData.id);
 
     if (type === "tested") {
+      const winesNotTested = document.getElementById('wines-not-tested')?.checked || false;
+      
       restaurantData.ratings = {
         plats: parseFloat(document.getElementById("rating-plats").value),
-        vins: parseFloat(document.getElementById("rating-vins").value),
+        vins: winesNotTested ? null : parseFloat(document.getElementById("rating-vins").value),
         accueil: parseFloat(document.getElementById("rating-accueil").value),
         lieu: parseFloat(document.getElementById("rating-lieu").value),
       };
+      restaurantData.winesNotTested = winesNotTested;
       restaurantData.dateVisited = restaurantData.dateAdded;
     } else {
       restaurantData.reason =
@@ -988,10 +1168,24 @@ class RestaurantApp {
         accueil: 5,
         lieu: 5,
       };
+      const winesNotTested = restaurant.winesNotTested || false;
+      
       document.getElementById("rating-plats").value = ratings.plats;
-      document.getElementById("rating-vins").value = ratings.vins;
+      document.getElementById("rating-vins").value = ratings.vins || 5;
       document.getElementById("rating-accueil").value = ratings.accueil;
       document.getElementById("rating-lieu").value = ratings.lieu;
+
+      // Restaurer l'état de la checkbox
+      const checkbox = document.getElementById('wines-not-tested');
+      if (checkbox) {
+          checkbox.checked = winesNotTested;
+          // Trigger l'event pour désactiver le slider si nécessaire
+          checkbox.dispatchEvent(new Event('change'));
+      }
+      
+      // Charger les photos
+      this.currentPhotos = restaurant.photos || [];
+      this.renderPhotoInputs();
 
       // Mettre à jour les affichages des sliders
       document.getElementById("plats-value").textContent =
@@ -1455,81 +1649,228 @@ async confirmDelete() {
     }, 100);
   }
 
+  activateGeolocation() {
+    if (!navigator.geolocation) {
+        this.showToast("❌ Géolocalisation non supportée par votre navigateur", "danger");
+        return;
+    }
+
+    this.showToast("📍 Localisation en cours...", "info");
+
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+
+            this.userPosition = { lat, lng };
+
+            // Initialiser la carte si nécessaire
+            if (!this.map) {
+                this.initMap();
+            }
+
+            // Supprimer l'ancien marqueur utilisateur s'il existe
+            if (this.userMarker) {
+                this.map.removeLayer(this.userMarker);
+            }
+
+            // Ajouter le marqueur utilisateur
+            this.userMarker = L.marker([lat, lng], {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(this.map);
+
+            this.userMarker.bindPopup(`
+                <div style="min-width: 150px; text-align: center;">
+                    <strong>📍 Vous êtes ici</strong>
+                </div>
+            `);
+
+            // Centrer la carte sur l'utilisateur
+            this.map.setView([lat, lng], 14);
+
+            // Mettre à jour les popups avec les distances
+            this.updateMapMarkersWithDistance();
+
+            this.showToast("✅ Position trouvée !", "success");
+        },
+        (error) => {
+            console.error("Erreur géolocalisation:", error);
+            this.showToast("❌ Impossible d'obtenir votre position", "danger");
+        }
+    );
+}
+
+calculateDistance(lat1, lon1, lat2, lon2) {
+    // Formule de Haversine pour calculer la distance entre deux points GPS
+    const R = 6371; // Rayon de la Terre en km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c;
+    
+    // Retourner en km si > 1km, sinon en mètres
+    if (distance >= 1) {
+        return distance.toFixed(1) + ' km';
+    } else {
+        return (distance * 1000).toFixed(0) + ' m';
+    }
+}
+
   initMap() {
-    if (this.map) return;
+    if (this.map) {
+        // Carte déjà initialisée, juste mettre à jour les marqueurs
+        this.updateMapMarkers();
+        return;
+    }
 
     this.map = L.map("map").setView([48.8566, 2.3522], 12);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
+        attribution: "© OpenStreetMap contributors",
     }).addTo(this.map);
 
-    // Ajouter les marqueurs pour les restaurants testés (bleu)
-    this.data.tested.forEach((restaurant) => {
-      if (restaurant.coordinates) {
-        const rating = this.calculateRating(restaurant.ratings);
-        const marker = L.marker([
-          restaurant.coordinates.lat,
-          restaurant.coordinates.lng,
-        ]).addTo(this.map);
+    // Créer les marqueurs initiaux
+    this.updateMapMarkers();
+}
 
-        marker.bindPopup(`
-                    <div style="min-width: 200px;">
-                        <h6><strong>${restaurant.name}</strong></h6>
-                        <p class="mb-1"><span class="badge bg-primary">${
-                          restaurant.type
-                        }</span></p>
-                        <p class="mb-2">${restaurant.location}</p>
-                        <div>${this.generateStars(rating)} ${rating.toFixed(
-          1
-        )}/5</div>
-                        ${
-                          restaurant.comment
-                            ? `<p class="small mt-2"><em>"${restaurant.comment}"</em></p>`
-                            : ""
-                        }
-                    </div>
-                `);
-      }
+updateMapMarkers() {
+    // Supprimer tous les marqueurs existants
+    this.restaurantMarkers.forEach(marker => {
+        this.map.removeLayer(marker);
+    });
+    this.restaurantMarkers = [];
+
+    // Obtenir les données filtrées actuelles
+    const currentTab = this.getCurrentTab();
+    const dataToShow = [...this.filteredData.tested, ...this.filteredData.wishlist];
+
+    // Ajouter les marqueurs pour les restaurants testés (BLEUS)
+    this.filteredData.tested.forEach((restaurant) => {
+        if (restaurant.coordinates) {
+            const rating = this.calculateRating(restaurant.ratings, restaurant.winesNotTested);
+            const distance = this.userPosition ? 
+                this.calculateDistance(
+                    this.userPosition.lat, 
+                    this.userPosition.lng,
+                    restaurant.coordinates.lat,
+                    restaurant.coordinates.lng
+                ) : null;
+
+            const marker = L.marker([
+                restaurant.coordinates.lat,
+                restaurant.coordinates.lng,
+            ], {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(this.map);
+
+            marker.bindPopup(`
+                <div style="min-width: 250px;">
+                    <h6><strong>${restaurant.name}</strong></h6>
+                    <p class="mb-1"><span class="badge bg-primary">${restaurant.type}</span></p>
+                    <p class="mb-2">${restaurant.location}</p>
+                    ${distance ? `<p class="mb-2"><i class="bi bi-pin-map"></i> <strong>${distance}</strong></p>` : ''}
+                    <div class="mb-2">${this.generateStars(rating)} ${rating.toFixed(1)}/5</div>
+                    ${restaurant.comment ? `<p class="small mt-2"><em>"${restaurant.comment}"</em></p>` : ""}
+                    ${restaurant.googleMapsUrl ? `
+                        <a href="${restaurant.googleMapsUrl}" target="_blank" class="btn btn-sm btn-primary text-white w-100 mt-2">
+                            <i class="bi bi-geo-alt-fill"></i> Ouvrir dans Google Maps
+                        </a>
+                    ` : ''}
+                </div>
+            `);
+
+            this.restaurantMarkers.push(marker);
+        }
     });
 
-    // Ajouter les marqueurs pour la wishlist (vert)
-    this.data.wishlist.forEach((restaurant) => {
-      if (restaurant.coordinates) {
-        const marker = L.marker([
-          restaurant.coordinates.lat,
-          restaurant.coordinates.lng,
-        ]).addTo(this.map);
-        marker.bindPopup(`
-                    <div style="min-width: 200px;">
-                        <h6><strong>${restaurant.name}</strong></h6>
-                        <p class="mb-1"><span class="badge bg-success">${
-                          restaurant.type
-                        }</span></p>
-                        <p class="mb-2">${restaurant.location}</p>
-                        <div class="alert alert-info mb-0 py-2">
-                            ❤️ <strong>À tester</strong><br>
-                            ${
-                              restaurant.reason
-                                ? `<small>${restaurant.reason}</small>`
-                                : ""
-                            }
-                        </div>
+    // Ajouter les marqueurs pour la wishlist (VERTS)
+    this.filteredData.wishlist.forEach((restaurant) => {
+        if (restaurant.coordinates) {
+            const distance = this.userPosition ? 
+                this.calculateDistance(
+                    this.userPosition.lat, 
+                    this.userPosition.lng,
+                    restaurant.coordinates.lat,
+                    restaurant.coordinates.lng
+                ) : null;
+
+            const marker = L.marker([
+                restaurant.coordinates.lat,
+                restaurant.coordinates.lng,
+            ], {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(this.map);
+
+            marker.bindPopup(`
+                <div style="min-width: 250px;">
+                    <h6><strong>${restaurant.name}</strong></h6>
+                    <p class="mb-1"><span class="badge bg-success">${restaurant.type}</span></p>
+                    <p class="mb-2">${restaurant.location}</p>
+                    ${distance ? `<p class="mb-2"><i class="bi bi-pin-map"></i> <strong>${distance}</strong></p>` : ''}
+                    <div class="alert alert-info mb-2 py-2">
+                        ❤️ <strong>À tester</strong><br>
+                        ${restaurant.reason ? `<small>${restaurant.reason}</small>` : ""}
                     </div>
-                `);
-      }
+                    ${restaurant.googleMapsUrl ? `
+                        <a href="${restaurant.googleMapsUrl}" target="_blank" class="btn btn-sm btn-success text-white w-100 mt-2">
+                            <i class="bi bi-geo-alt-fill"></i> Ouvrir dans Google Maps
+                        </a>
+                    ` : ''}
+                </div>
+            `);
+
+            this.restaurantMarkers.push(marker);
+        }
     });
-  }
+}
+
+updateMapMarkersWithDistance() {
+    // Recréer tous les marqueurs avec les distances mises à jour
+    this.updateMapMarkers();
+}
 
   /* ===== UTILITAIRES ===== */
-  calculateRating(ratings) {
-    return (
-      (ratings.plats * 2 +
-        ratings.vins * 1.5 +
-        ratings.accueil * 1.5 +
-        ratings.lieu * 1) /
-      6
-    );
+  calculateRating(ratings, winesNotTested = false) {
+    if (winesNotTested || ratings.vins === null) {
+      // Sans les vins : (Plats × 2 + Accueil × 1.5 + Lieu × 1) ÷ 4.5
+      return (
+        (ratings.plats * 2 + ratings.accueil * 1.5 + ratings.lieu * 1) / 4.5
+      );
+    } else {
+      // Avec les vins : formule normale
+      return (
+        (ratings.plats * 2 +
+          ratings.vins * 1.5 +
+          ratings.accueil * 1.5 +
+          ratings.lieu * 1) /
+        6
+      );
+    }
   }
 
   generateStars(rating) {
@@ -1643,28 +1984,89 @@ populateFilterOptions() {
 }
 
 setupFilterEvents() {
-    // Événements pour les dropdowns de cuisine
-    const cuisineSelect = document.getElementById('cuisine-filter');
-    if (cuisineSelect) {
-        cuisineSelect.addEventListener('change', (e) => {
-            const selectedOptions = Array.from(e.target.selectedOptions).map(option => option.value).filter(v => v);
-            this.filters.cuisines = selectedOptions;
-            this.updateCuisineBadges();
-            this.applyFilters();
+    console.log('🔧 Configuration des événements de filtres...');
+    
+    // Événements pour le dropdown cuisine
+    const cuisineMenu = document.getElementById('cuisine-dropdown-menu');
+    if (cuisineMenu) {
+        cuisineMenu.addEventListener('click', (e) => {
+            e.stopPropagation(); // Empêcher la fermeture du dropdown
+            
+            const item = e.target.closest('.dropdown-item');
+            if (item) {
+                e.preventDefault();
+                const checkbox = item.querySelector('input[type="checkbox"]');
+                const value = item.dataset.value;
+                
+                // Toggle checkbox
+                checkbox.checked = !checkbox.checked;
+                item.classList.toggle('active', checkbox.checked);
+                
+                // Mettre à jour les filtres
+                if (checkbox.checked) {
+                    if (!this.filters.cuisines.includes(value)) {
+                        this.filters.cuisines.push(value);
+                    }
+                } else {
+                    this.filters.cuisines = this.filters.cuisines.filter(c => c !== value);
+                }
+                
+                this.updateCuisineBadges();
+                this.updateDropdownButtonText('cuisineDropdownBtn', this.filters.cuisines.length, 'Cuisine');
+                this.applyFilters();
+                
+                console.log('✅ Filtre cuisine mis à jour:', this.filters.cuisines);
+            }
         });
+    } else {
+        console.error('❌ cuisine-dropdown-menu non trouvé');
     }
     
-    // Événements pour les checkboxes de prix
+    // Événements pour le dropdown localisation
+    const locationMenu = document.getElementById('location-dropdown-menu');
+    if (locationMenu) {
+        locationMenu.addEventListener('click', (e) => {
+            e.stopPropagation(); // Empêcher la fermeture du dropdown
+            
+            const item = e.target.closest('.dropdown-item');
+            if (item) {
+                e.preventDefault();
+                const checkbox = item.querySelector('input[type="checkbox"]');
+                const value = item.dataset.value;
+                
+                // Toggle checkbox
+                checkbox.checked = !checkbox.checked;
+                item.classList.toggle('active', checkbox.checked);
+                
+                // Mettre à jour les filtres
+                if (checkbox.checked) {
+                    if (!this.filters.locations.includes(value)) {
+                        this.filters.locations.push(value);
+                    }
+                } else {
+                    this.filters.locations = this.filters.locations.filter(l => l !== value);
+                }
+                
+                this.updateLocationBadges();
+                this.updateDropdownButtonText('locationDropdownBtn', this.filters.locations.length, 'Lieu');
+                this.applyFilters();
+                
+                console.log('✅ Filtre location mis à jour:', this.filters.locations);
+            }
+        });
+    } else {
+        console.error('❌ location-dropdown-menu non trouvé');
+    }
+    
+    // Événements pour les checkboxes de prix (inchangé)
     document.querySelectorAll('.price-checkbox').forEach(checkbox => {
         checkbox.addEventListener('click', (e) => {
             const priceValue = checkbox.dataset.price;
             const input = checkbox.querySelector('input');
             
-            // Toggle checkbox
             input.checked = !input.checked;
             checkbox.classList.toggle('active', input.checked);
             
-            // Mettre à jour les filtres
             if (input.checked) {
                 if (!this.filters.prices.includes(priceValue)) {
                     this.filters.prices.push(priceValue);
@@ -1674,19 +2076,10 @@ setupFilterEvents() {
             }
             
             this.applyFilters();
+            
+            console.log('✅ Filtre prix mis à jour:', this.filters.prices);
         });
     });
-    
-    // Événements pour les dropdowns de localisation
-    const locationSelect = document.getElementById('location-filter');
-    if (locationSelect) {
-        locationSelect.addEventListener('change', (e) => {
-            const selectedOptions = Array.from(e.target.selectedOptions).map(option => option.value).filter(v => v);
-            this.filters.locations = selectedOptions;
-            this.updateLocationBadges();
-            this.applyFilters();
-        });
-    }
     
     // Bouton effacer filtres
     const clearBtn = document.getElementById('clear-filters-btn');
@@ -1694,6 +2087,23 @@ setupFilterEvents() {
         clearBtn.addEventListener('click', () => {
             this.clearAllFilters();
         });
+    }
+    
+    console.log('✅ Événements de filtres configurés');
+}
+
+updateDropdownButtonText(btnId, count, label) {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+        if (count === 0) {
+            btn.textContent = 'Choisir...';
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-outline-secondary');
+        } else {
+            btn.textContent = `${count} ${label}${count > 1 ? 's' : ''}`;
+            btn.classList.remove('btn-outline-secondary');
+            btn.classList.add('btn-primary');
+        }
     }
 }
 
@@ -1727,6 +2137,9 @@ applyFilters() {
     this.renderFiltered(currentTab);
     this.updateResultsCount(filtered.length);
     this.updateClearButton();
+    if (this.map) {
+        this.updateMapMarkers();
+    }
 }
 
 renderFiltered(type) {
@@ -1792,36 +2205,48 @@ updateLocationBadges() {
 }
 
 removeCuisineFilter(cuisine) {
+    // Retirer du tableau
     this.filters.cuisines = this.filters.cuisines.filter(c => c !== cuisine);
     
-    // Mettre à jour le select
-    const select = document.getElementById('cuisine-filter');
-    if (select) {
-        Array.from(select.options).forEach(option => {
-            if (option.value === cuisine) {
-                option.selected = false;
+    // Décocher dans le dropdown
+    const cuisineMenu = document.getElementById("cuisine-dropdown-menu");
+    if (cuisineMenu) {
+        cuisineMenu.querySelectorAll(".dropdown-item").forEach(item => {
+            if (item.dataset.value === cuisine) {
+                const checkbox = item.querySelector("input[type='checkbox']");
+                if (checkbox) {
+                    checkbox.checked = false;
+                }
+                item.classList.remove("active");
             }
         });
     }
     
     this.updateCuisineBadges();
+    this.updateDropdownButtonText("cuisineDropdownBtn", this.filters.cuisines.length, "Cuisine");
     this.applyFilters();
 }
 
 removeLocationFilter(location) {
+    // Retirer du tableau
     this.filters.locations = this.filters.locations.filter(l => l !== location);
     
-    // Mettre à jour le select
-    const select = document.getElementById('location-filter');
-    if (select) {
-        Array.from(select.options).forEach(option => {
-            if (option.value === location) {
-                option.selected = false;
+    // Décocher dans le dropdown
+    const locationMenu = document.getElementById("location-dropdown-menu");
+    if (locationMenu) {
+        locationMenu.querySelectorAll(".dropdown-item").forEach(item => {
+            if (item.dataset.value === location) {
+                const checkbox = item.querySelector("input[type='checkbox']");
+                if (checkbox) {
+                    checkbox.checked = false;
+                }
+                item.classList.remove("active");
             }
         });
     }
     
     this.updateLocationBadges();
+    this.updateDropdownButtonText("locationDropdownBtn", this.filters.locations.length, "Lieu");
     this.applyFilters();
 }
 
@@ -1853,6 +2278,8 @@ updateClearButton() {
 }
 
 clearAllFilters() {
+    console.log('🧹 Effacement des filtres...');
+    
     // Reset des filtres
     this.filters = {
         cuisines: [],
@@ -1860,17 +2287,29 @@ clearAllFilters() {
         locations: []
     };
     
-    // Reset des sélections UI
-    const cuisineSelect = document.getElementById('cuisine-filter');
-    const locationSelect = document.getElementById('location-filter');
-    
-    if (cuisineSelect) {
-        Array.from(cuisineSelect.options).forEach(option => option.selected = false);
+    // Reset des dropdowns cuisine
+    const cuisineMenu = document.getElementById('cuisine-dropdown-menu');
+    if (cuisineMenu) {
+        cuisineMenu.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        cuisineMenu.querySelectorAll('.dropdown-item').forEach(item => {
+            item.classList.remove('active');
+        });
     }
+    this.updateDropdownButtonText('cuisineDropdownBtn', 0, 'Cuisine');
     
-    if (locationSelect) {
-        Array.from(locationSelect.options).forEach(option => option.selected = false);
+    // Reset des dropdowns localisation
+    const locationMenu = document.getElementById('location-dropdown-menu');
+    if (locationMenu) {
+        locationMenu.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        locationMenu.querySelectorAll('.dropdown-item').forEach(item => {
+            item.classList.remove('active');
+        });
     }
+    this.updateDropdownButtonText('locationDropdownBtn', 0, 'Lieu');
     
     // Reset des checkboxes prix
     document.querySelectorAll('.price-checkbox').forEach(checkbox => {
@@ -1884,10 +2323,8 @@ clearAllFilters() {
     
     // Réappliquer les filtres (vides)
     this.applyFilters();
-}
-
-saveFiltersState() {
-    localStorage.setItem('restaurant-filters', JSON.stringify(this.filters));
+    
+    console.log('✅ Filtres effacés');
 }
 
 loadFiltersState() {
@@ -2070,6 +2507,25 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
   });
+
+  // Gérer la checkbox "Vins non testés"
+    const winesNotTestedCheckbox = document.getElementById('wines-not-tested');
+    const vinsSlider = document.getElementById('rating-vins');
+    const vinsValue = document.getElementById('vins-value');
+
+    if (winesNotTestedCheckbox && vinsSlider && vinsValue) {
+        winesNotTestedCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                vinsSlider.disabled = true;
+                vinsSlider.style.opacity = '0.3';
+                vinsValue.textContent = 'N/A';
+            } else {
+                vinsSlider.disabled = false;
+                vinsSlider.style.opacity = '1';
+                vinsValue.textContent = parseFloat(vinsSlider.value).toFixed(1);
+            }
+        });
+    }
 
   // Bouton de synchronisation dans le hero
   const syncBtnHero = document.getElementById("sync-btn-hero");

@@ -55,7 +55,7 @@ exports.handler = async (event, context) => {
 
     // Récupérer tous les restaurants avec leurs infos complètes
     const restaurantsQuery = `
-      SELECT 
+    SELECT 
         r.id,
         r.name,
         ct.name as type,
@@ -72,11 +72,12 @@ exports.handler = async (event, context) => {
         r.reason,
         r.date_added,
         r.date_visited,
+        r.photos,
         rt.plats,
         rt.vins,
         rt.accueil,
         rt.lieu
-      FROM restaurants r
+    FROM restaurants r
       LEFT JOIN cuisine_types ct ON r.cuisine_type_id = ct.id
       LEFT JOIN ratings rt ON r.id = rt.restaurant_id
       ORDER BY r.created_at DESC
@@ -130,6 +131,7 @@ exports.handler = async (event, context) => {
           };
         }
         restaurant.dateVisited = row.date_visited;
+        restaurant.photos = row.photos || [];
         tested.push(restaurant);
       } else if (row.status === 'wishlist') {
         restaurant.reason = row.reason;

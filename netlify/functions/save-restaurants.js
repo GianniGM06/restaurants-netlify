@@ -59,6 +59,33 @@ exports.handler = async (event, context) => {
     await client.query('BEGIN');
 
     try {
+      // ✨ NOUVELLE LOGIQUE : Récupérer les IDs existants pour détecter les suppressions
+      const existingIdsResult = await client.query(
+        'SELECT id, status FROM restaurants'
+      );
+      const existingIds = new Map();
+      existingIdsResult.rows.forEach(row => {
+        existingIds.set(row.id.toString(), row.status);
+      });
+
+      // IDs des restaurants envoyés par le client
+      const sentTestedIds = new Set(requestData.tested?.map(r => r.id.toString()) || []);
+      const sentWishlistIds = new Set(requestData.wishlist?.map(r => r.id.toString()) || []);
+      const allSentIds = new Set([...sentTestedIds, ...sentWishlistIds]);
+
+      // 🗑️ SUPPRIMER les restaurants qui n'existent plus dans les données envoyées
+      for (const [existingId, status] of existingIds) {
+        if (!allSentIds.has(existingId)) {
+          console.log('🗑️ Suppression restaurant ID:', existingId);
+          
+          // Supprimer d'abord les ratings (foreign key)
+          await client.query('DELETE FROM ratings WHERE restaurant_id = $1', [existingId]);
+          
+          // Puis supprimer le restaurant
+          await client.query('DELETE FROM restaurants WHERE id = $1', [existingId]);
+        }
+      }
+
       // 1. Traiter chaque restaurant testé
       if (requestData.tested) {
         for (const restaurant of requestData.tested) {
@@ -96,44 +123,47 @@ exports.handler = async (event, context) => {
             // Mettre à jour
             console.log('🔄 Mise à jour restaurant:', restaurant.id);
             await client.query(`
-              UPDATE restaurants SET 
-                name = $1, 
-                cuisine_type_id = $2, 
-                location = $3,
-                address = $4,
-                google_maps_url = $5,
-                comment = $6, 
-                status = $7,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE id = $8
-            `, [
-              restaurant.name,
-              cuisineTypeId,
-              restaurant.location,
-              restaurant.address || null,
-              restaurant.googleMapsUrl || null,
-              restaurant.comment || null,
-              'tested',
-              restaurant.id
-            ]);
+    UPDATE restaurants SET 
+        name = $1, 
+        cuisine_type_id = $2, 
+        location = $3,
+        address = $4,
+        google_maps_url = $5,
+        comment = $6,
+        photos = $7,
+        status = $8,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = $9
+`, [
+    restaurant.name,
+    cuisineTypeId,
+    restaurant.location,
+    restaurant.address || null,
+    restaurant.googleMapsUrl || null,
+    restaurant.comment || null,
+    JSON.stringify(restaurant.photos || []),
+    'tested',
+    restaurant.id
+]);
           } else {
             // Insérer nouveau
             console.log('➕ Nouveau restaurant:', restaurant.id);
             await client.query(`
-              INSERT INTO restaurants 
-              (id, name, cuisine_type_id, location, address, google_maps_url, comment, status, date_added)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            `, [
-              restaurant.id,
-              restaurant.name,
-              cuisineTypeId,
-              restaurant.location,
-              restaurant.address || null,
-              restaurant.googleMapsUrl || null,
-              restaurant.comment || null,
-              'tested',
-              restaurant.dateAdded || new Date().toISOString().split('T')[0]
-            ]);
+    INSERT INTO restaurants 
+    (id, name, cuisine_type_id, location, address, google_maps_url, comment, photos, status, date_added)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+`, [
+    restaurant.id,
+    restaurant.name,
+    cuisineTypeId,
+    restaurant.location,
+    restaurant.address || null,
+    restaurant.googleMapsUrl || null,
+    restaurant.comment || null,
+    JSON.stringify(restaurant.photos || []),
+    'tested',
+    restaurant.dateAdded || new Date().toISOString().split('T')[0]
+]);
           }
 
           // Gérer les notes
@@ -239,7 +269,7 @@ exports.handler = async (event, context) => {
       }
 
       await client.query('COMMIT');
-      console.log('✅ Sauvegarde réussie');
+      console.log('✅ Sauvegarde réussie (avec suppressions)');
 
       return {
         statusCode: 200,
