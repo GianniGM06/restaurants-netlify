@@ -592,11 +592,10 @@ if (nearbyBtn) {
     };
 }
 
-      // Événements pour les onglets (persistance des filtres)
+      // ✅ CORRECTION 2 : Événements pour les onglets (sans saveFiltersState)
     const tabs = document.querySelectorAll('#mainTabs .nav-link');
     tabs.forEach(tab => {
         tab.addEventListener('shown.bs.tab', () => {
-            this.saveFiltersState();
             this.applyFilters();
         });
     });
@@ -622,12 +621,12 @@ if (nearbyBtn) {
   }
 
   /* ===== RENDU ===== */
+  // ✅ CORRECTION 1 : Supprimer l'appel à loadFiltersState
   render() {
     this.renderStats();
     
     // Initialiser les filtres puis appliquer
     this.setupFilters();
-    this.loadFiltersState();
     this.applyFilters();
   }
 
@@ -1065,7 +1064,7 @@ updatePhotoComment(index, comment) {
   address: document.getElementById("restaurant-address").value,
   priceRange: document.getElementById("restaurant-price").value,
   photo: document.getElementById("restaurant-photo").value,
-  googleMapsUrl: document.getElementById("restaurant-google-maps").value,  // ← NOUVELLE LIGNE
+  googleMapsUrl: document.getElementById("restaurant-google-maps").value,
   comment: document.getElementById("restaurant-comment").value,
   photos: type === "tested" ? this.currentPhotos.filter(p => p.url) : [],
   dateAdded: isEdit
@@ -1649,6 +1648,7 @@ async confirmDelete() {
     }, 100);
   }
 
+  // ✅ CORRECTION 3 : Amélioration de la géolocalisation avec messages d'erreur explicites
   activateGeolocation() {
     if (!navigator.geolocation) {
         this.showToast("❌ Géolocalisation non supportée par votre navigateur", "danger");
@@ -1702,7 +1702,27 @@ async confirmDelete() {
         },
         (error) => {
             console.error("Erreur géolocalisation:", error);
-            this.showToast("❌ Impossible d'obtenir votre position", "danger");
+            
+            let message = "❌ Impossible d'obtenir votre position";
+            
+            switch(error.code) {
+                case 1: // PERMISSION_DENIED
+                    message = "❌ Veuillez autoriser l'accès à votre position dans les paramètres du navigateur";
+                    break;
+                case 2: // POSITION_UNAVAILABLE
+                    message = "❌ Position indisponible - vérifiez que le GPS/WiFi est activé";
+                    break;
+                case 3: // TIMEOUT
+                    message = "❌ Délai dépassé pour obtenir votre position";
+                    break;
+            }
+            
+            this.showToast(message, "danger");
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
         }
     );
 }
@@ -2327,47 +2347,7 @@ clearAllFilters() {
     console.log('✅ Filtres effacés');
 }
 
-loadFiltersState() {
-    try {
-        const saved = localStorage.getItem('restaurant-filters');
-        if (saved) {
-            this.filters = JSON.parse(saved);
-            this.restoreFiltersUI();
-        }
-    } catch (error) {
-        console.warn('Erreur chargement filtres:', error);
-    }
-}
-
-restoreFiltersUI() {
-    // Restaurer les sélections de cuisine
-    const cuisineSelect = document.getElementById('cuisine-filter');
-    if (cuisineSelect) {
-        Array.from(cuisineSelect.options).forEach(option => {
-            option.selected = this.filters.cuisines.includes(option.value);
-        });
-    }
-    
-    // Restaurer les sélections de localisation
-    const locationSelect = document.getElementById('location-filter');
-    if (locationSelect) {
-        Array.from(locationSelect.options).forEach(option => {
-            option.selected = this.filters.locations.includes(option.value);
-        });
-    }
-    
-    // Restaurer les checkboxes prix
-    document.querySelectorAll('.price-checkbox').forEach(checkbox => {
-        const priceValue = checkbox.dataset.price;
-        const isActive = this.filters.prices.includes(priceValue);
-        checkbox.classList.toggle('active', isActive);
-        checkbox.querySelector('input').checked = isActive;
-    });
-    
-    // Mettre à jour les badges
-    this.updateCuisineBadges();
-    this.updateLocationBadges();
-}
+// ✅ CORRECTION 4 : Les méthodes loadFiltersState et restoreFiltersUI ont été supprimées
 
   /* ===== DONNÉES PAR DÉFAUT ===== */
   parseCuisineTypes(cuisineTypesData) {
