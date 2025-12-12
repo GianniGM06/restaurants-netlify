@@ -53,9 +53,9 @@ exports.handler = async (event, context) => {
   try {
     console.log('🔍 Récupération des restaurants depuis Neon DB...');
 
-    // Récupérer tous les restaurants avec leurs infos complètes
+    // ✅ CORRECTION : Récupérer photo_url depuis la DB
     const restaurantsQuery = `
-    SELECT 
+      SELECT 
         r.id,
         r.name,
         ct.name as type,
@@ -65,7 +65,7 @@ exports.handler = async (event, context) => {
         r.latitude,
         r.longitude,
         r.price_range,
-        r.photo_url as photo,
+        r.photo_url,
         r.google_maps_url,
         r.comment,
         r.status,
@@ -77,10 +77,10 @@ exports.handler = async (event, context) => {
         rt.vins,
         rt.accueil,
         rt.lieu
-    FROM restaurants r
-      LEFT JOIN cuisine_types ct ON r.cuisine_type_id = ct.id
-      LEFT JOIN ratings rt ON r.id = rt.restaurant_id
-      ORDER BY r.created_at DESC
+      FROM restaurants r
+        LEFT JOIN cuisine_types ct ON r.cuisine_type_id = ct.id
+        LEFT JOIN ratings rt ON r.id = rt.restaurant_id
+        ORDER BY r.created_at DESC
     `;
 
     const restaurantsResult = await client.query(restaurantsQuery);
@@ -106,7 +106,7 @@ exports.handler = async (event, context) => {
         location: row.location,
         address: row.address,
         priceRange: row.price_range,
-        photo: row.photo_url,
+        photo: row.photo_url,  // ✅ CORRECTION : Utiliser photo_url au lieu de photo
         googleMapsUrl: row.google_maps_url,
         comment: row.comment,
         dateAdded: row.date_added

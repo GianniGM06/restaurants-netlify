@@ -1039,6 +1039,20 @@ updatePhotoComment(index, comment) {
     const cuisineInput = document.getElementById("restaurant-cuisine").value;
     const cuisineType = this.addNewCuisineType(cuisineInput);
 
+    // Géocoder l'adresse automatiquement
+const address = document.getElementById("restaurant-address").value;
+let coordinates = null;
+
+if (address && address.trim() !== '') {
+  this.showToast("📍 Recherche des coordonnées...", "info");
+  coordinates = await this.geocodeAddress(address);
+  
+  if (coordinates) {
+    console.log('✅ Coordonnées trouvées:', coordinates);
+    this.showToast("✅ Coordonnées GPS trouvées !", "success");
+  }
+}
+
     // CORRECTION : Générer un ID valide
     let restaurantId;
     if (isEdit && id && id.trim() !== "") {
@@ -1062,6 +1076,7 @@ updatePhotoComment(index, comment) {
   type: cuisineType,
   location: document.getElementById("restaurant-location").value,
   address: document.getElementById("restaurant-address").value,
+  coordinates: coordinates,
   priceRange: document.getElementById("restaurant-price").value,
   photo: document.getElementById("restaurant-photo").value,
   googleMapsUrl: document.getElementById("restaurant-google-maps").value,
@@ -1208,6 +1223,8 @@ updatePhotoComment(index, comment) {
       type === "tested" ? "block" : "none";
     document.getElementById("wishlist-section").style.display =
       type === "wishlist" ? "block" : "none";
+    document.getElementById("photos-section").style.display =
+      type === "tested" ? "block" : "none";  
 
     const modal = new bootstrap.Modal(
       document.getElementById("restaurant-modal")
@@ -1892,6 +1909,40 @@ updateMapMarkersWithDistance() {
       );
     }
   }
+
+  async geocodeAddress(address) {
+  if (!address || address.trim() === '') {
+    return null;
+  }
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'MonCarnetGastro/1.0'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Erreur géocodage');
+    }
+
+    const data = await response.json();
+
+    if (data && data.length > 0) {
+      return {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon)
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error('❌ Erreur géocodage:', error);
+    return null;
+  }
+}
 
   generateStars(rating) {
     let stars = "";

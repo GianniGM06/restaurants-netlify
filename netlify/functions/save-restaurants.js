@@ -45,7 +45,6 @@ exports.handler = async (event, context) => {
   try {
     console.log('💾 Sauvegarde des restaurants...');
 
-    // Test de connection
     await client.query('SELECT 1');
     console.log('✅ Connection DB réussie');
 
@@ -55,11 +54,9 @@ exports.handler = async (event, context) => {
       wishlist: requestData.wishlist?.length || 0
     });
 
-    // Transaction
     await client.query('BEGIN');
 
     try {
-      // ✨ NOUVELLE LOGIQUE : Récupérer les IDs existants pour détecter les suppressions
       const existingIdsResult = await client.query(
         'SELECT id, status FROM restaurants'
       );
@@ -68,42 +65,32 @@ exports.handler = async (event, context) => {
         existingIds.set(row.id.toString(), row.status);
       });
 
-      // IDs des restaurants envoyés par le client
       const sentTestedIds = new Set(requestData.tested?.map(r => r.id.toString()) || []);
       const sentWishlistIds = new Set(requestData.wishlist?.map(r => r.id.toString()) || []);
       const allSentIds = new Set([...sentTestedIds, ...sentWishlistIds]);
 
-      // 🗑️ SUPPRIMER les restaurants qui n'existent plus dans les données envoyées
       for (const [existingId, status] of existingIds) {
         if (!allSentIds.has(existingId)) {
           console.log('🗑️ Suppression restaurant ID:', existingId);
-          
-          // Supprimer d'abord les ratings (foreign key)
           await client.query('DELETE FROM ratings WHERE restaurant_id = $1', [existingId]);
-          
-          // Puis supprimer le restaurant
           await client.query('DELETE FROM restaurants WHERE id = $1', [existingId]);
         }
       }
 
-      // 1. Traiter chaque restaurant testé
       if (requestData.tested) {
         for (const restaurant of requestData.tested) {
           console.log('📝 Traitement restaurant testé:', restaurant.name, 'ID:', restaurant.id);
           
-          // Vérification ID
           if (!restaurant.id) {
             throw new Error('❌ Restaurant ID manquant pour: ' + restaurant.name);
           }
 
-          // Obtenir l'ID du type de cuisine
           const cuisineResult = await client.query(
             'SELECT id FROM cuisine_types WHERE name = $1',
             [restaurant.type]
           );
           
           if (cuisineResult.rows.length === 0) {
-            // Créer le type de cuisine s'il n'existe pas
             const newCuisineResult = await client.query(
               'INSERT INTO cuisine_types (name, emoji) VALUES ($1, $2) RETURNING id',
               [restaurant.type, '🍽️']
@@ -113,60 +100,65 @@ exports.handler = async (event, context) => {
             var cuisineTypeId = cuisineResult.rows[0].id;
           }
 
-          // Vérifier si le restaurant existe
           const existingResult = await client.query(
             'SELECT id FROM restaurants WHERE id = $1',
             [restaurant.id]
           );
 
           if (existingResult.rows.length > 0) {
-            // Mettre à jour
             console.log('🔄 Mise à jour restaurant:', restaurant.id);
             await client.query(`
-    UPDATE restaurants SET 
-        name = $1, 
-        cuisine_type_id = $2, 
-        location = $3,
-        address = $4,
-        google_maps_url = $5,
-        comment = $6,
-        photos = $7,
-        status = $8,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = $9
-`, [
-    restaurant.name,
-    cuisineTypeId,
-    restaurant.location,
-    restaurant.address || null,
-    restaurant.googleMapsUrl || null,
-    restaurant.comment || null,
-    JSON.stringify(restaurant.photos || []),
-    'tested',
-    restaurant.id
-]);
+              UPDATE restaurants SET 
+                name = $1, 
+                cuisine_type_id = $2, 
+                location = $3,
+                address = $4,
+                latitude = $5,
+                longitude = $6,
+                google_maps_url = $7,
+                photo_url = $8,
+                comment = $9,
+                photos = $10,
+                status = $11,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE id = $12
+            `, [
+              restaurant.name,
+              cuisineTypeId,
+              restaurant.location,
+              restaurant.address || null,
+              restaurant.coordinates?.lat || null,
+              restaurant.coordinates?.lng || null,
+              restaurant.googleMapsUrl || null,
+              restaurant.photo || null,
+              restaurant.comment || null,
+              JSON.stringify(restaurant.photos || []),
+              'tested',
+              restaurant.id
+            ]);
           } else {
-            // Insérer nouveau
             console.log('➕ Nouveau restaurant:', restaurant.id);
             await client.query(`
-    INSERT INTO restaurants 
-    (id, name, cuisine_type_id, location, address, google_maps_url, comment, photos, status, date_added)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-`, [
-    restaurant.id,
-    restaurant.name,
-    cuisineTypeId,
-    restaurant.location,
-    restaurant.address || null,
-    restaurant.googleMapsUrl || null,
-    restaurant.comment || null,
-    JSON.stringify(restaurant.photos || []),
-    'tested',
-    restaurant.dateAdded || new Date().toISOString().split('T')[0]
-]);
+              INSERT INTO restaurants 
+              (id, name, cuisine_type_id, location, address, latitude, longitude, google_maps_url, photo_url, comment, photos, status, date_added)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            `, [
+              restaurant.id,
+              restaurant.name,
+              cuisineTypeId,
+              restaurant.location,
+              restaurant.address || null,
+              restaurant.coordinates?.lat || null,
+              restaurant.coordinates?.lng || null,
+              restaurant.googleMapsUrl || null,
+              restaurant.photo || null,
+              restaurant.comment || null,
+              JSON.stringify(restaurant.photos || []),
+              'tested',
+              restaurant.dateAdded || new Date().toISOString().split('T')[0]
+            ]);
           }
 
-          // Gérer les notes
           if (restaurant.ratings) {
             console.log('⭐ Sauvegarde des notes pour:', restaurant.id);
             await client.query(`
@@ -190,7 +182,6 @@ exports.handler = async (event, context) => {
         }
       }
 
-      // 2. Traiter la wishlist de la même manière
       if (requestData.wishlist) {
         for (const restaurant of requestData.wishlist) {
           console.log('📝 Traitement wishlist:', restaurant.name, 'ID:', restaurant.id);
@@ -199,7 +190,6 @@ exports.handler = async (event, context) => {
             throw new Error('❌ Restaurant ID manquant pour: ' + restaurant.name);
           }
 
-          // Obtenir l'ID du type de cuisine
           const cuisineResult = await client.query(
             'SELECT id FROM cuisine_types WHERE name = $1',
             [restaurant.type]
@@ -215,50 +205,56 @@ exports.handler = async (event, context) => {
             var cuisineTypeId = cuisineResult.rows[0].id;
           }
 
-          // Vérifier si existe
           const existingResult = await client.query(
             'SELECT id FROM restaurants WHERE id = $1',
             [restaurant.id]
           );
 
           if (existingResult.rows.length > 0) {
-            // Mettre à jour
             await client.query(`
               UPDATE restaurants SET 
                 name = $1, 
                 cuisine_type_id = $2, 
                 location = $3,
                 address = $4,
-                google_maps_url = $5,
-                comment = $6, 
-                reason = $7,
-                status = $8,
+                latitude = $5,
+                longitude = $6,
+                google_maps_url = $7,
+                photo_url = $8,
+                comment = $9, 
+                reason = $10,
+                status = $11,
                 updated_at = CURRENT_TIMESTAMP
-              WHERE id = $9
+              WHERE id = $12
             `, [
               restaurant.name,
               cuisineTypeId,
               restaurant.location,
               restaurant.address || null,
+              restaurant.coordinates?.lat || null,
+              restaurant.coordinates?.lng || null,
               restaurant.googleMapsUrl || null,
+              restaurant.photo || null,
               restaurant.comment || null,
               restaurant.reason || null,
               'wishlist',
               restaurant.id
             ]);
           } else {
-            // Insérer nouveau
             await client.query(`
               INSERT INTO restaurants 
-              (id, name, cuisine_type_id, location, address, google_maps_url, comment, reason, status, date_added)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              (id, name, cuisine_type_id, location, address, latitude, longitude, google_maps_url, photo_url, comment, reason, status, date_added)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             `, [
               restaurant.id,
               restaurant.name,
               cuisineTypeId,
               restaurant.location,
               restaurant.address || null,
+              restaurant.coordinates?.lat || null,
+              restaurant.coordinates?.lng || null,
               restaurant.googleMapsUrl || null,
+              restaurant.photo || null,
               restaurant.comment || null,
               restaurant.reason || null,
               'wishlist',
@@ -269,7 +265,7 @@ exports.handler = async (event, context) => {
       }
 
       await client.query('COMMIT');
-      console.log('✅ Sauvegarde réussie (avec suppressions)');
+      console.log('✅ Sauvegarde réussie avec coordonnées GPS');
 
       return {
         statusCode: 200,
