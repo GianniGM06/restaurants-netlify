@@ -2058,74 +2058,81 @@ setupFilterEvents() {
     console.log('🔧 Configuration des événements de filtres...');
     
     // Événements pour le dropdown cuisine
-    const cuisineMenu = document.getElementById('cuisine-dropdown-menu');
-    if (cuisineMenu) {
-        cuisineMenu.addEventListener('click', (e) => {
-            e.stopPropagation(); // Empêcher la fermeture du dropdown
+const cuisineMenu = document.getElementById('cuisine-dropdown-menu');
+if (cuisineMenu) {
+    cuisineMenu.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const item = e.target.closest('.dropdown-item');
+        if (item) {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            const value = item.dataset.value;
             
-            const item = e.target.closest('.dropdown-item');
-            if (item) {
-                e.preventDefault();
-                const checkbox = item.querySelector('input[type="checkbox"]');
-                const value = item.dataset.value;
-                
-                // Toggle checkbox
+            // Toggle SEULEMENT si on n'a pas cliqué directement sur la checkbox
+            if (e.target !== checkbox) {
                 checkbox.checked = !checkbox.checked;
-                item.classList.toggle('active', checkbox.checked);
-                
-                // Mettre à jour les filtres
-                if (checkbox.checked) {
-                    if (!this.filters.cuisines.includes(value)) {
-                        this.filters.cuisines.push(value);
-                    }
-                } else {
-                    this.filters.cuisines = this.filters.cuisines.filter(c => c !== value);
-                }
-                
-                this.updateCuisineBadges();
-                this.updateDropdownButtonText('cuisineDropdownBtn', this.filters.cuisines.length, 'Cuisine');
-                this.applyFilters();
-                
-                console.log('✅ Filtre cuisine mis à jour:', this.filters.cuisines);
             }
-        });
-    } else {
+            
+            item.classList.toggle('active', checkbox.checked);
+            
+            // Mettre à jour les filtres
+            if (checkbox.checked) {
+                if (!this.filters.cuisines.includes(value)) {
+                    this.filters.cuisines.push(value);
+                }
+            } else {
+                this.filters.cuisines = this.filters.cuisines.filter(c => c !== value);
+            }
+            
+            this.updateCuisineBadges();
+            this.updateDropdownButtonText('cuisineDropdownBtn', this.filters.cuisines.length, 'Cuisine');
+            this.applyFilters();
+            
+            console.log('✅ Filtre cuisine mis à jour:', this.filters.cuisines);
+        }
+    });
+} else {
         console.error('❌ cuisine-dropdown-menu non trouvé');
     }
     
     // Événements pour le dropdown localisation
-    const locationMenu = document.getElementById('location-dropdown-menu');
-    if (locationMenu) {
-        locationMenu.addEventListener('click', (e) => {
-            e.stopPropagation(); // Empêcher la fermeture du dropdown
+const locationMenu = document.getElementById('location-dropdown-menu');
+if (locationMenu) {
+    locationMenu.addEventListener('click', (e) => {
+        // Empêcher la propagation ET le comportement par défaut
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const item = e.target.closest('.dropdown-item');
+        if (item) {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            const value = item.dataset.value;
             
-            const item = e.target.closest('.dropdown-item');
-            if (item) {
-                e.preventDefault();
-                const checkbox = item.querySelector('input[type="checkbox"]');
-                const value = item.dataset.value;
-                
-                // Toggle checkbox
+            // Toggle SEULEMENT si on n'a pas cliqué directement sur la checkbox
+            if (e.target !== checkbox) {
                 checkbox.checked = !checkbox.checked;
-                item.classList.toggle('active', checkbox.checked);
-                
-                // Mettre à jour les filtres
-                if (checkbox.checked) {
-                    if (!this.filters.locations.includes(value)) {
-                        this.filters.locations.push(value);
-                    }
-                } else {
-                    this.filters.locations = this.filters.locations.filter(l => l !== value);
-                }
-                
-                this.updateLocationBadges();
-                this.updateDropdownButtonText('locationDropdownBtn', this.filters.locations.length, 'Lieu');
-                this.applyFilters();
-                
-                console.log('✅ Filtre location mis à jour:', this.filters.locations);
             }
-        });
-    } else {
+            
+            item.classList.toggle('active', checkbox.checked);
+            
+            // Mettre à jour les filtres
+            if (checkbox.checked) {
+                if (!this.filters.locations.includes(value)) {
+                    this.filters.locations.push(value);
+                }
+            } else {
+                this.filters.locations = this.filters.locations.filter(l => l !== value);
+            }
+            
+            this.updateLocationBadges();
+            this.updateDropdownButtonText('locationDropdownBtn', this.filters.locations.length, 'Lieu');
+            this.applyFilters();
+            
+            console.log('✅ Filtre location mis à jour:', this.filters.locations);
+        }
+    });
+} else {
         console.error('❌ location-dropdown-menu non trouvé');
     }
     
@@ -2181,32 +2188,29 @@ updateDropdownButtonText(btnId, count, label) {
 applyFilters() {
     const currentTab = this.getCurrentTab();
     
-    // Filtrer les données selon l'onglet actuel
-    const sourceData = this.data[currentTab];
-    
-    let filtered = sourceData.filter(restaurant => {
-        // Filtre cuisine (choix multiples avec OU)
-        const cuisineMatch = this.filters.cuisines.length === 0 || 
-                            this.filters.cuisines.includes(restaurant.type);
+    // Filtrer LES DEUX listes (tested ET wishlist) pour la carte
+    ['tested', 'wishlist'].forEach(type => {
+        const sourceData = this.data[type];
         
-        // Filtre prix (choix multiples avec OU)
-        const priceMatch = this.filters.prices.length === 0 || 
-                          this.filters.prices.includes(restaurant.priceRange || '€€');
+        let filtered = sourceData.filter(restaurant => {
+            const cuisineMatch = this.filters.cuisines.length === 0 || 
+                                this.filters.cuisines.includes(restaurant.type);
+            
+            const priceMatch = this.filters.prices.length === 0 || 
+                              this.filters.prices.includes(restaurant.priceRange || '€€');
+            
+            const locationMatch = this.filters.locations.length === 0 || 
+                                  this.filters.locations.includes(restaurant.location);
+            
+            return cuisineMatch && priceMatch && locationMatch;
+        });
         
-        // Filtre localisation (choix multiples avec OU)
-        const locationMatch = this.filters.locations.length === 0 || 
-                              this.filters.locations.includes(restaurant.location);
-        
-        // Tous les filtres doivent être satisfaits (ET logique entre catégories)
-        return cuisineMatch && priceMatch && locationMatch;
+        this.filteredData[type] = filtered;
     });
     
-    // Stocker les résultats filtrés
-    this.filteredData[currentTab] = filtered;
-    
-    // Mettre à jour l'affichage
+    // Mettre à jour l'affichage de l'onglet actuel
     this.renderFiltered(currentTab);
-    this.updateResultsCount(filtered.length);
+    this.updateResultsCount(this.filteredData[currentTab].length);
     this.updateClearButton();
     if (this.map) {
         this.updateMapMarkers();
