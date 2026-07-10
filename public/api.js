@@ -8,10 +8,13 @@ export async function fetchRestaurants() {
   return response.json();
 }
 
-export async function persistRestaurants(payload) {
+export async function persistRestaurants(payload, token) {
+  const headers = { 'Content-Type': 'application/json' };
+  // L'API d'écriture vérifie ce token GitHub côté serveur (allowlist)
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${API_BASE}/save-restaurants`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(payload),
   });
   if (!response.ok) {

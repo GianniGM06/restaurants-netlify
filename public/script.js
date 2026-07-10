@@ -325,7 +325,7 @@ class RestaurantApp {
         tested: this.data.tested,
         wishlist: this.data.wishlist,
         cuisineTypes: this.generateCuisineTypesObject(),
-      });
+      }, this.githubAuth.token);
       return true;
     } catch (error) {
       this.showToast('❌ Erreur sauvegarde: ' + error.message, 'danger');
@@ -398,6 +398,80 @@ class RestaurantApp {
     // Branchés UNE SEULE FOIS (délégation) — jamais lors des re-render
     this.setupFilterEvents();
     this.setupCuisineAutocomplete();
+    this.setupCardActions();
+    this.setupBadgeEvents();
+    this.setupPhotoInputEvents();
+  }
+
+  /* ===== DÉLÉGATION D'ÉVÉNEMENTS =====
+     Les cards sont regénérées en innerHTML : aucun onclick inline avec des
+     données utilisateur (risque XSS). Les actions passent par data-action,
+     les listeners sont posés une seule fois sur les conteneurs stables. */
+
+  setupCardActions() {
+    [['tested-grid', 'tested'], ['wishlist-grid', 'wishlist']].forEach(([gridId, type]) => {
+      const grid = document.getElementById(gridId);
+      if (!grid) return;
+      grid.addEventListener('click', (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+        const card = actionEl.closest('[data-restaurant-id]');
+        const id = card ? card.dataset.restaurantId : null;
+        const restaurant = id != null ? this.data[type].find((r) => r.id == id) : null;
+
+        switch (actionEl.dataset.action) {
+          case 'edit': this.editRestaurant(id, type); break;
+          case 'delete': this.deleteRestaurant(id, type); break;
+          case 'move': this.moveToTested(id); break;
+          case 'toggle-detail': this.toggleRatingDetail(id); break;
+          case 'open-photo': this.openLightbox(id, Number(actionEl.dataset.photoIndex)); break;
+          case 'show-map':
+            if (restaurant?.coordinates) this.showOnMap(restaurant.coordinates.lat, restaurant.coordinates.lng);
+            break;
+          case 'open-maps':
+            if (restaurant?.googleMapsUrl) window.open(restaurant.googleMapsUrl, '_blank', 'noopener');
+            break;
+          case 'add': this.openAddModal(type); break;
+          case 'clear-filters': this.clearAllFilters(); break;
+          case 'github-config': this.openGitHubConfig(); break;
+        }
+      });
+    });
+  }
+
+  setupBadgeEvents() {
+    const cuisineBadges = document.getElementById('cuisine-badges');
+    if (cuisineBadges) {
+      cuisineBadges.addEventListener('click', (e) => {
+        const badge = e.target.closest('[data-value]');
+        if (badge) this.removeCuisineFilter(badge.dataset.value);
+      });
+    }
+    const locationBadges = document.getElementById('location-badges');
+    if (locationBadges) {
+      locationBadges.addEventListener('click', (e) => {
+        const badge = e.target.closest('[data-value]');
+        if (badge) this.removeLocationFilter(badge.dataset.value);
+      });
+    }
+  }
+
+  setupPhotoInputEvents() {
+    const container = document.getElementById('photos-container');
+    if (!container) return;
+    container.addEventListener('change', (e) => {
+      const group = e.target.closest('[data-photo-index]');
+      if (!group) return;
+      const index = Number(group.dataset.photoIndex);
+      if (e.target.dataset.photoField === 'url') this.updatePhotoUrl(index, e.target.value);
+      else if (e.target.dataset.photoField === 'comment') this.updatePhotoComment(index, e.target.value);
+    });
+    container.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action="remove-photo"]');
+      if (!btn) return;
+      const group = btn.closest('[data-photo-index]');
+      if (group) this.removePhotoInput(Number(group.dataset.photoIndex));
+    });
   }
 
   setupEventListeners() {
@@ -583,10 +657,10 @@ if (nearbyBtn) {
         "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=250&fit=crop";
 
     const editButtons = this.isEditMode ? `
-        <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'tested')">
+        <button class="btn btn-outline-primary btn-action" data-action="edit">
             <i class="bi bi-pencil"></i> Modifier
         </button>
-        <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'tested')">
+        <button class="btn btn-outline-danger btn-action" data-action="delete">
             <i class="bi bi-trash"></i> Supprimer
         </button>
     ` : "";
@@ -595,7 +669,7 @@ if (nearbyBtn) {
     const photoGallery = restaurant.photos && restaurant.photos.length > 0 ? `
         <div class="photo-gallery">
             ${restaurant.photos.map((photo, index) => `
-                <button type="button" class="photo-item" onclick="app.openLightbox(${restaurant.id}, ${index})" aria-label="Voir photo ${index + 1}">
+                <button type="button" class="photo-item" data-action="open-photo" data-photo-index="${index}" aria-label="Voir photo ${index + 1}">
                     <img src="${escapeHtml(photo.url)}" alt="Photo ${index + 1}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src=window.FALLBACK_IMG">
                 </button>
             `).join('')}
@@ -608,12 +682,11 @@ if (nearbyBtn) {
     `;
 
     return `
-        <div class="col-md-6 mb-4">
+        <div class="col-md-6 mb-4" data-restaurant-id="${escapeHtml(restaurant.id)}">
             <div class="card restaurant-card h-100">
                 <img src="${escapeHtml(photo)}" class="card-img-top" alt="${escapeHtml(restaurant.name)}"
-                     style="cursor: pointer;" loading="lazy" decoding="async"
-                     onclick="window.open('${escapeHtml(restaurant.googleMapsUrl)}', '_blank')"
-                     title="Cliquer pour ouvrir dans Google Maps">
+                     ${restaurant.googleMapsUrl ? 'style="cursor: pointer;" data-action="open-maps" title="Cliquer pour ouvrir dans Google Maps"' : ''}
+                     loading="lazy" decoding="async">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <h3 class="card-title h5">${escapeHtml(restaurant.name)}</h3>
@@ -626,10 +699,10 @@ if (nearbyBtn) {
 
                     ${photoGallery}
 
-                    <div class="final-rating" id="final-rating-${restaurant.id}">
+                    <div class="final-rating" id="final-rating-${escapeHtml(restaurant.id)}">
                         <div class="rating-simple">
                             <strong>${rating.toFixed(1)}/5</strong> ${this.generateStars(rating)}
-                            <button class="btn btn-sm btn-outline-light ms-2" onclick="app.toggleRatingDetail(${restaurant.id})">
+                            <button class="btn btn-sm btn-outline-light ms-2" data-action="toggle-detail">
                                 Détails
                             </button>
                         </div>
@@ -652,7 +725,7 @@ if (nearbyBtn) {
                                     <span class="value">${restaurant.ratings.lieu.toFixed(1)}</span>
                                 </div>
                             </div>
-                            <button class="btn btn-sm btn-outline-light mt-2" onclick="app.toggleRatingDetail(${restaurant.id})">
+                            <button class="btn btn-sm btn-outline-light mt-2" data-action="toggle-detail">
                                 Note
                             </button>
                         </div>
@@ -663,7 +736,7 @@ if (nearbyBtn) {
                     <div class="action-buttons">
                         ${editButtons}
                         ${restaurant.coordinates ? `
-                        <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
+                        <button class="btn btn-outline-info btn-action" data-action="show-map">
                             <i class="bi bi-geo-alt" aria-hidden="true"></i> Carte
                         </button>
                         ` : ""}
@@ -679,13 +752,13 @@ if (nearbyBtn) {
         "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=250&fit=crop";
 
     const editButtons = this.isEditMode ? `
-        <button class="btn btn-success btn-action" onclick="app.moveToTested(${restaurant.id})">
+        <button class="btn btn-success btn-action" data-action="move">
             <i class="bi bi-arrow-right" aria-hidden="true"></i> Testé !
         </button>
-        <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'wishlist')">
+        <button class="btn btn-outline-primary btn-action" data-action="edit">
             <i class="bi bi-pencil" aria-hidden="true"></i> Modifier
         </button>
-        <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'wishlist')">
+        <button class="btn btn-outline-danger btn-action" data-action="delete">
             <i class="bi bi-trash" aria-hidden="true"></i> Supprimer
         </button>
     ` : `
@@ -694,13 +767,13 @@ if (nearbyBtn) {
         </button>
     `;
 
-    // Conteneur cliquable si Google Maps URL disponible
+    // Conteneur cliquable si Google Maps URL disponible (délégation data-action)
     const cardClickableStart = restaurant.googleMapsUrl ?
-        `<div class="card restaurant-card wishlist-card h-100" style="cursor: pointer;" onclick="window.open('${escapeHtml(restaurant.googleMapsUrl)}', '_blank')" title="Cliquer pour ouvrir dans Google Maps">` :
+        `<div class="card restaurant-card wishlist-card h-100" style="cursor: pointer;" data-action="open-maps" title="Cliquer pour ouvrir dans Google Maps">` :
         `<div class="card restaurant-card wishlist-card h-100">`;
 
     return `
-        <div class="col-md-6 mb-4">
+        <div class="col-md-6 mb-4" data-restaurant-id="${escapeHtml(restaurant.id)}">
             ${cardClickableStart}
                 <img src="${escapeHtml(photo)}" class="card-img-top" alt="${escapeHtml(restaurant.name)}" loading="lazy" decoding="async">
                 <div class="card-body">
@@ -722,10 +795,10 @@ if (nearbyBtn) {
 
                     ${restaurant.comment ? `<p class="text-muted"><em>"${escapeHtml(restaurant.comment)}"</em></p>` : ""}
 
-                    <div class="action-buttons" onclick="event.stopPropagation();">
+                    <div class="action-buttons">
                         ${editButtons}
                         ${restaurant.coordinates ? `
-                        <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
+                        <button class="btn btn-outline-info btn-action" data-action="show-map">
                             <i class="bi bi-geo-alt" aria-hidden="true"></i> Carte
                         </button>
                         ` : ""}
@@ -753,7 +826,8 @@ if (nearbyBtn) {
 }
 
 openLightbox(restaurantId, photoIndex) {
-    const restaurant = this.data.tested.find(r => r.id === restaurantId);
+    // == volontaire : les IDs peuvent être string (BIGINT Postgres) ou number (Date.now())
+    const restaurant = this.data.tested.find(r => r.id == restaurantId);
     if (!restaurant || !restaurant.photos || restaurant.photos.length === 0) return;
 
     this.currentPhotos = restaurant.photos;
@@ -795,12 +869,12 @@ nextPhoto() {
       ? `
             <button class="btn btn-${
               isWishlist ? "success" : "primary"
-            }" onclick="app.openAddModal('${type}')">
+            }" data-action="add">
                 <i class="bi bi-plus-lg"></i> Ajouter
             </button>
         `
       : `
-            <button class="btn btn-outline-secondary" onclick="app.openGitHubConfig()">
+            <button class="btn btn-outline-secondary" data-action="github-config">
                 <i class="bi bi-key"></i> Se connecter pour ajouter
             </button>
         `;
@@ -877,7 +951,7 @@ renderPhotoInputs() {
     if (!container) return;
 
     container.innerHTML = this.currentPhotos.map((photo, index) => `
-        <div class="photo-input-group">
+        <div class="photo-input-group" data-photo-index="${index}">
             <div class="row align-items-center">
                 <div class="col-md-2">
                     ${photo.url ? `<img src="${escapeHtml(photo.url)}" class="photo-preview" onerror="this.onerror=null;this.src=window.FALLBACK_IMG">` :
@@ -890,17 +964,17 @@ renderPhotoInputs() {
                         <label class="form-label small mb-1">URL de la photo</label>
                         <input type="url" class="form-control form-control-sm"
                                value="${escapeHtml(photo.url)}"
-                               onchange="app.updatePhotoUrl(${index}, this.value)"
+                               data-photo-field="url"
                                placeholder="https://i.imgur.com/...">
                     </div>
                     <div class="mb-2">
                         <label class="form-label small mb-1">Commentaire (optionnel)</label>
                         <input type="text" class="form-control form-control-sm"
                                value="${escapeHtml(photo.comment)}"
-                               onchange="app.updatePhotoComment(${index}, this.value)"
+                               data-photo-field="comment"
                                placeholder="Description de la photo">
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="app.removePhotoInput(${index})">
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-action="remove-photo">
                         <i class="bi bi-trash"></i> Supprimer
                     </button>
                 </div>
@@ -1104,11 +1178,13 @@ if (address && address.trim() !== '') {
       this.currentPhotos = restaurant.photos || [];
       this.renderPhotoInputs();
 
-      // Mettre à jour les affichages des sliders
+      // Mettre à jour les affichages des sliders (vins peut être null : "non testés")
       document.getElementById("plats-value").textContent =
         ratings.plats.toFixed(1);
-      document.getElementById("vins-value").textContent =
-        ratings.vins.toFixed(1);
+      if (!winesNotTested && ratings.vins != null) {
+        document.getElementById("vins-value").textContent =
+          ratings.vins.toFixed(1);
+      }
       document.getElementById("accueil-value").textContent =
         ratings.accueil.toFixed(1);
       document.getElementById("lieu-value").textContent =
@@ -1157,7 +1233,8 @@ if (address && address.trim() !== '') {
   moveToTested(id) {
     if (!this.checkEditPermission()) return;
 
-    const restaurant = this.data.wishlist.find((r) => r.id === id);
+    // == volontaire : IDs string (BIGINT Postgres) ou number (Date.now())
+    const restaurant = this.data.wishlist.find((r) => r.id == id);
     if (!restaurant) return;
 
     // Ouvrir le modal de transfert
@@ -1266,10 +1343,9 @@ if (address && address.trim() !== '') {
   }
 
   async confirmTransfer() {
-    const id = parseInt(
-      document.getElementById("transfer-restaurant-id").value
-    );
-    const restaurant = this.data.wishlist.find((r) => r.id === id);
+    const id = document.getElementById("transfer-restaurant-id").value;
+    // == volontaire : IDs string (BIGINT Postgres) ou number (Date.now())
+    const restaurant = this.data.wishlist.find((r) => r.id == id);
     if (!restaurant) return;
 
     // Récupérer les notes
@@ -1295,7 +1371,7 @@ if (address && address.trim() !== '') {
 
     // Déplacer immédiatement
     this.data.tested.push(testedRestaurant);
-    this.data.wishlist = this.data.wishlist.filter((r) => r.id !== id);
+    this.data.wishlist = this.data.wishlist.filter((r) => r.id != id);
 
     // Fermer le modal et mettre à jour l'affichage
     bootstrap.Modal.getInstance(
@@ -1419,6 +1495,12 @@ async confirmDelete() {
 
       console.log("✅ Setup autocomplete cuisine");
 
+      // Sélection d'une option par délégation (les items sont regénérés en innerHTML)
+      cuisineDropdown.addEventListener("click", (e) => {
+        const item = e.target.closest(".dropdown-item");
+        if (item && item.dataset.value != null) this.selectCuisine(item.dataset.value);
+      });
+
       // Input event
       cuisineInput.addEventListener("input", (e) => {
         this.filterCuisineOptions(e.target.value);
@@ -1462,7 +1544,7 @@ async confirmDelete() {
         allCuisines.add(restaurant.type);
       });
 
-      // Générer les options
+      // Générer les options (sélection par délégation — voir setupCuisineAutocomplete)
       const sortedCuisines = Array.from(allCuisines).sort();
       dropdown.innerHTML = sortedCuisines
         .map((cuisine) => {
@@ -1470,7 +1552,7 @@ async confirmDelete() {
             (c) => c.value === cuisine
           );
           const emoji = cuisineData ? cuisineData.emoji : "🍽️";
-          return `<div class="dropdown-item" onclick="app.selectCuisine('${cuisine}')">${emoji} ${cuisine}</div>`;
+          return `<div class="dropdown-item" role="button" data-value="${escapeHtml(cuisine)}">${escapeHtml(emoji)} ${escapeHtml(cuisine)}</div>`;
         })
         .join("");
 
@@ -1850,7 +1932,7 @@ createFilteredEmptyState(type) {
                 <i class="bi bi-search fs-1 text-muted mb-3"></i>
                 <h4>Aucun restaurant trouvé</h4>
                 <p class="text-muted">Aucun restaurant ne correspond aux filtres sélectionnés.</p>
-                <button class="btn btn-outline-primary" onclick="app.clearAllFilters()">
+                <button class="btn btn-outline-primary" data-action="clear-filters">
                     <i class="bi bi-x-circle"></i> Effacer les filtres
                 </button>
             </div>
@@ -1869,7 +1951,7 @@ updateCuisineBadges() {
         const emoji = cuisineData ? escapeHtml(cuisineData.emoji) : '🍽️';
 
         return `
-            <button type="button" class="cuisine-badge" onclick="app.removeCuisineFilter('${escapeHtml(cuisine)}')" aria-label="Retirer le filtre ${escapeHtml(cuisine)}">
+            <button type="button" class="cuisine-badge" data-value="${escapeHtml(cuisine)}" aria-label="Retirer le filtre ${escapeHtml(cuisine)}">
                 ${emoji} ${escapeHtml(cuisine)}
                 <span aria-hidden="true">×</span>
             </button>
@@ -1882,7 +1964,7 @@ updateLocationBadges() {
     if (!container) return;
 
     container.innerHTML = this.filters.locations.map(location => `
-        <button type="button" class="cuisine-badge" onclick="app.removeLocationFilter('${escapeHtml(location)}')" aria-label="Retirer le filtre ${escapeHtml(location)}">
+        <button type="button" class="cuisine-badge" data-value="${escapeHtml(location)}" aria-label="Retirer le filtre ${escapeHtml(location)}">
             <span aria-hidden="true">📍</span> ${escapeHtml(location)}
             <span aria-hidden="true">×</span>
         </button>

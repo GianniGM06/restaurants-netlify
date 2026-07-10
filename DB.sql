@@ -115,10 +115,13 @@ SELECT
     rt.vins,
     rt.accueil,
     rt.lieu,
-    CASE 
-        WHEN rt.plats IS NOT NULL THEN 
+    CASE
+        -- vins NULL = "vins non testés" : formule sans le critère vins
+        WHEN rt.plats IS NOT NULL AND rt.vins IS NULL THEN
+            ROUND((rt.plats * 2 + rt.accueil * 1.5 + rt.lieu * 1) / 4.5, 1)
+        WHEN rt.plats IS NOT NULL THEN
             ROUND((rt.plats * 2 + rt.vins * 1.5 + rt.accueil * 1.5 + rt.lieu * 1) / 6.0, 1)
-        ELSE NULL 
+        ELSE NULL
     END as calculated_rating,
     r.created_at,
     r.updated_at

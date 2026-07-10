@@ -20,10 +20,46 @@ function getPool() {
   return pool;
 }
 
+// Logins GitHub autorisés en écriture (vérifiés CÔTÉ SERVEUR).
+// Surchargez avec la variable d'env Netlify ALLOWED_GITHUB_USERS (séparés par des virgules).
+const ALLOWED_USERS = (process.env.ALLOWED_GITHUB_USERS || 'giannigm06')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+async function authenticateRequest(event) {
+  const authHeader = event.headers.authorization || event.headers.Authorization || '';
+  const token = authHeader.replace(/^(Bearer|token)\s+/i, '').trim();
+
+  if (!token) {
+    return { ok: false, status: 401, message: 'Authentification requise : token GitHub manquant' };
+  }
+
+  const response = await fetch('https://api.github.com/user', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github.v3+json',
+      'User-Agent': 'restaurants-netlify',
+    },
+  });
+
+  if (!response.ok) {
+    return { ok: false, status: 401, message: 'Token GitHub invalide' };
+  }
+
+  const user = await response.json();
+  if (!ALLOWED_USERS.includes((user.login || '').toLowerCase())) {
+    return { ok: false, status: 403, message: `Utilisateur "${user.login}" non autorisé en écriture` };
+  }
+
+  return { ok: true, login: user.login };
+}
+
 exports.handler = async (event, context) => {
   const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    // Endpoint d'écriture : CORS restreint à l'origine du site (URL fournie par Netlify)
+    'Access-Control-Allow-Origin': process.env.URL || '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Content-Type': 'application/json'
   };
@@ -37,6 +73,16 @@ exports.handler = async (event, context) => {
       statusCode: 405,
       headers,
       body: JSON.stringify({ error: 'Method not allowed' })
+    };
+  }
+
+  // Toute écriture exige un token GitHub valide appartenant à l'allowlist
+  const auth = await authenticateRequest(event);
+  if (!auth.ok) {
+    return {
+      statusCode: auth.status,
+      headers,
+      body: JSON.stringify({ success: false, message: auth.message })
     };
   }
 

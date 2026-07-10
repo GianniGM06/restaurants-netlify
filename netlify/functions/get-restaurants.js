@@ -122,13 +122,15 @@ exports.handler = async (event, context) => {
 
       if (row.status === 'tested') {
         // Ajouter les notes et la date de visite
+        // Convention : vins NULL en DB = "vins non testés" (pas de parseFloat(null) -> NaN)
         if (row.plats !== null) {
           restaurant.ratings = {
             plats: parseFloat(row.plats),
-            vins: parseFloat(row.vins),
+            vins: row.vins === null ? null : parseFloat(row.vins),
             accueil: parseFloat(row.accueil),
             lieu: parseFloat(row.lieu)
           };
+          restaurant.winesNotTested = row.vins === null;
         }
         restaurant.dateVisited = row.date_visited;
         restaurant.photos = row.photos || [];

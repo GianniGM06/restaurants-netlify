@@ -2,11 +2,8 @@
   publish = "public"
   functions = "netlify/functions"
 
-[build.environment]
-  GITHUB_OWNER = "giannigm06"
-  GITHUB_REPO = "Restaurants_data"
-  GITHUB_FILE = "restaurants.json"
-  # GITHUB_TOKEN doit être défini dans le dashboard Netlify (Environment Variables), jamais ici
+# ALLOWED_GITHUB_USERS (logins autorisés en écriture, séparés par des virgules)
+# peut être défini dans le dashboard Netlify — défaut : giannigm06
 
 [[redirects]]
   from = "/api/*"
