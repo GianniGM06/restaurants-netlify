@@ -11,46 +11,57 @@
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- Leaflet CSS chargé dynamiquement par script.js à l'ouverture de l'onglet Carte -->
+    <!-- Thème appliqué avant le premier paint (anti-flash) ; le toggle est géré par theme.js -->
+    <script>
+        (function () {
+            var saved = localStorage.getItem('theme');
+            var theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-bs-theme', theme);
+        })();
+    </script>
     <!-- Custom CSS -->
     <link rel="stylesheet" href="styles.css">
-    
-    <!-- Tous les styles sont dans styles.css -->
 </head>
 <body>
     <!-- Skip link accessibilité -->
     <a href="#main-content" class="visually-hidden-focusable position-absolute top-0 start-0 p-2 bg-primary text-white fw-bold" style="z-index:9999;">Aller au contenu principal</a>
     <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-light fixed-top">
+    <nav class="navbar navbar-expand-lg fixed-top">
         <div class="container">
-            <a class="navbar-brand fw-bold fs-3" href="#">
-                <i class="bi bi-cup-hot text-primary"></i>
+            <a class="navbar-brand fw-semibold" href="#">
+                <i class="bi bi-cup-hot" aria-hidden="true"></i>
                 Les Restos de Gianni
-                <span id="status-badge" class="badge bg-secondary fs-6">⚙️ Chargement...</span>
+                <span id="status-badge" class="badge bg-secondary">Chargement…</span>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="Ouvrir le menu">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto align-items-lg-center">
                     <li class="nav-item">
-                        <button class="btn btn-outline-info me-2" id="faq-btn" title="Questions fréquentes">
+                        <button class="btn btn-nav" id="faq-btn" title="Questions fréquentes">
                             <i class="bi bi-question-circle" aria-hidden="true"></i> FAQ
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="btn btn-outline-secondary me-2" id="sync-btn" title="Recharger les données">
-                            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Synchroniser
+                        <button class="btn btn-nav" id="sync-btn" title="Recharger les données">
+                            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Actualiser
                         </button>
                     </li>
                     <li class="nav-item dropdown">
-                        <button class="btn nav-link dropdown-toggle" id="githubDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <button class="btn btn-nav dropdown-toggle" id="githubDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-github" aria-hidden="true"></i> GitHub
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="githubDropdown">
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="githubDropdown">
                             <li><button class="dropdown-item" id="github-config">
                                 <i class="bi bi-gear" aria-hidden="true"></i> Connexion GitHub
                             </button></li>
                         </ul>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-nav btn-icon" id="theme-toggle" aria-label="Changer de thème">
+                            <i class="bi bi-moon" aria-hidden="true"></i>
+                        </button>
                     </li>
                 </ul>
             </div>
@@ -61,62 +72,44 @@
         <div class="main-container">
             <!-- Hero Section -->
             <div class="hero-section">
-                <h1 class="display-4 fw-bold mb-3">Ma liste de restos</h1>
-                <p class="fs-5 mb-4">Les adresses que j'ai pu tester et celles que je souhaite découvrir</p>
-                
-                <div class="d-flex justify-content-center gap-3 mb-4">
-                    <button class="btn btn-light btn-lg" id="nearby-restaurants-btn">
-    <i class="bi bi-geo-alt-fill"></i> Restaurants près de moi
-</button>
-                    <button class="btn btn-outline-light btn-lg" id="sync-btn-hero">
-                        <i class="bi bi-cloud-arrow-down"></i> Synchroniser
+                <h1 class="hero-title">Ma liste de restos</h1>
+                <p class="hero-subtitle">Les adresses que j'ai testées et celles que je veux découvrir.</p>
+
+                <div class="d-flex justify-content-center flex-wrap gap-2 mb-4">
+                    <button class="btn btn-primary" id="nearby-restaurants-btn">
+                        <i class="bi bi-geo-alt" aria-hidden="true"></i> Restaurants près de moi
+                    </button>
+                    <button class="btn btn-outline-secondary" id="sync-btn-hero">
+                        <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Actualiser
                     </button>
                 </div>
-                
+
                 <!-- Indicateur dynamique selon le mode -->
-                <div class="alert alert-info d-inline-block" id="mode-indicator">
-                    <i class="bi bi-info-circle-fill"></i>
-                    <strong>Application en chargement...</strong>
+                <div class="mode-pill is-info" id="mode-indicator">
+                    <i class="bi bi-hourglass-split" aria-hidden="true"></i>
+                    Chargement…
                 </div>
             </div>
 
             <!-- Stats Section -->
-            <div class="container py-5">
-                <div class="row g-4">
-                    <div class="col-md-3">
-                        <div class="card stats-card text-center h-100">
-                            <div class="card-body">
-                                <i class="bi bi-star-fill fs-1 mb-2"></i>
-                                <h2 class="card-title" id="tested-count">0</h2>
-                                <p class="card-text">Restaurants testés</p>
-                            </div>
+            <div class="container stats-section">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="stats-card h-100">
+                            <p class="stats-value" id="tested-count">0</p>
+                            <p class="stats-label"><i class="bi bi-star" aria-hidden="true"></i> Restaurants testés</p>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card stats-card text-center h-100">
-                            <div class="card-body">
-                                <i class="bi bi-heart-fill fs-1 mb-2"></i>
-                                <h2 class="card-title" id="wishlist-count">0</h2>
-                                <p class="card-text">Dans ma wishlist</p>
-                            </div>
+                    <div class="col-md-4">
+                        <div class="stats-card h-100">
+                            <p class="stats-value" id="wishlist-count">0</p>
+                            <p class="stats-label"><i class="bi bi-heart" aria-hidden="true"></i> Dans ma wishlist</p>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card stats-card text-center h-100">
-                            <div class="card-body">
-                                <i class="bi bi-trophy-fill fs-1 mb-2"></i>
-                                <h2 class="card-title" id="avg-rating">--</h2>
-                                <p class="card-text">Note moyenne</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card stats-card text-center h-100">
-                            <div class="card-body">
-                                <i class="bi bi-globe fs-1 mb-2"></i>
-                                <h2 class="card-title">🍽️</h2>
-                                <p class="card-text">Bon appétit !</p>
-                            </div>
+                    <div class="col-md-4">
+                        <div class="stats-card h-100">
+                            <p class="stats-value" id="avg-rating">--</p>
+                            <p class="stats-label"><i class="bi bi-trophy" aria-hidden="true"></i> Note moyenne</p>
                         </div>
                     </div>
                 </div>
@@ -148,9 +141,19 @@
 <div class="filters-container" id="filters-container">
     <div class="container">
         <div class="filters-row">
+            <!-- Recherche par nom -->
+            <div class="filter-group filter-group-search">
+                <label class="visually-hidden" for="search-input">Rechercher un restaurant</label>
+                <div class="search-field">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input type="search" class="form-control" id="search-input"
+                           placeholder="Rechercher un restaurant…" autocomplete="off">
+                </div>
+            </div>
+
             <!-- Filtre Type de cuisine -->
             <div class="filter-group">
-                <label class="filter-label"><span aria-hidden="true">🍽️</span> Cuisine :</label>
+                <label class="filter-label">Cuisine</label>
                 <div class="dropdown">
                     <button class="btn btn-outline-secondary dropdown-toggle filter-dropdown-btn" type="button" id="cuisineDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
                         Choisir...
@@ -163,7 +166,7 @@
 
             <!-- Filtre Prix -->
             <div class="filter-group">
-                <label class="filter-label"><span aria-hidden="true">💰</span> Prix :</label>
+                <label class="filter-label">Prix</label>
                 <div class="price-checkboxes">
                     <label class="price-checkbox" data-price="€">
                         <input type="checkbox" value="€">
@@ -186,7 +189,7 @@
 
             <!-- Filtre Localisation -->
             <div class="filter-group">
-                <label class="filter-label"><span aria-hidden="true">📍</span> Lieu :</label>
+                <label class="filter-label">Lieu</label>
                 <div class="dropdown">
                     <button class="btn btn-outline-secondary dropdown-toggle filter-dropdown-btn" type="button" id="locationDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
                         Choisir...
@@ -219,7 +222,7 @@
                 <!-- Tested Restaurants -->
                 <div class="tab-pane fade show active" id="tested" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h2 class="h4 mb-0"><span aria-hidden="true">🌟</span> Mes Découvertes</h2>
+                        <h2 class="h4 mb-0 section-title">Mes découvertes</h2>
                         <button class="btn btn-primary edit-only" id="add-tested" style="display: none;">
                             <i class="bi bi-plus-lg"></i> Ajouter un restaurant
                         </button>
@@ -232,7 +235,7 @@
                 <!-- Wishlist -->
                 <div class="tab-pane fade" id="wishlist" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h2 class="h4 mb-0"><span aria-hidden="true">❤️</span> Ma Liste d'Envies</h2>
+                        <h2 class="h4 mb-0 section-title">Ma liste d'envies</h2>
                         <button class="btn btn-success edit-only" id="add-wishlist" style="display: none;">
                             <i class="bi bi-plus-lg"></i> Ajouter une envie
                         </button>
@@ -245,7 +248,7 @@
                 <!-- Map -->
 <div class="tab-pane fade" id="map-section" role="tabpanel">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0"><span aria-hidden="true">🗺️</span> Carte Interactive</h2>
+        <h2 class="h4 mb-0 section-title">Carte interactive</h2>
         <button class="btn btn-outline-primary" id="geolocate-btn">
             <i class="bi bi-geo-alt-fill"></i> Me localiser
         </button>
@@ -267,7 +270,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modal-title">Ajouter un restaurant</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <form id="restaurant-form">
@@ -408,7 +411,7 @@
                 <h5 class="modal-title">
                     <i class="bi bi-question-circle-fill"></i> Questions Fréquentes
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="accordion" id="faqAccordion">
@@ -508,7 +511,7 @@
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content bg-dark">
             <div class="modal-header border-0">
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body text-center position-relative">
                 <button class="btn btn-light position-absolute start-0 top-50 translate-middle-y ms-3" onclick="app.previousPhoto()" style="z-index: 1060;">

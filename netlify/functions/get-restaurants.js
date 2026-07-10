@@ -51,9 +51,6 @@ exports.handler = async (event, context) => {
   const client = getPool();
 
   try {
-    console.log('🔍 Récupération des restaurants depuis Neon DB...');
-
-    // ✅ CORRECTION : Récupérer photo_url depuis la DB
     const restaurantsQuery = `
       SELECT 
         r.id,
@@ -93,6 +90,12 @@ exports.handler = async (event, context) => {
     `;
 
     const cuisineTypesResult = await client.query(cuisineTypesQuery);
+
+    // Vraie date de dernière modification (pas l'heure de la requête)
+    const lastUpdatedResult = await client.query(
+      'SELECT GREATEST(MAX(created_at), MAX(updated_at)) AS last_updated FROM restaurants'
+    );
+    const lastUpdated = lastUpdatedResult.rows[0]?.last_updated || null;
 
     // Traiter les données des restaurants
     const tested = [];
@@ -160,17 +163,11 @@ exports.handler = async (event, context) => {
       wishlist: wishlist,
       cuisineTypes: cuisineTypes,
       metadata: {
-        lastUpdated: new Date().toISOString(),
+        lastUpdated,
         totalEntries: tested.length + wishlist.length,
         source: 'neon-db'
       }
     };
-
-    console.log('✅ Restaurants récupérés:', {
-      tested: tested.length,
-      wishlist: wishlist.length,
-      cuisineTypes: Object.keys(cuisineTypes).length
-    });
 
     return {
       statusCode: 200,
@@ -179,7 +176,7 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('❌ Erreur récupération restaurants:', error);
+    console.error('Erreur récupération restaurants:', error);
 
     return {
       statusCode: 500,

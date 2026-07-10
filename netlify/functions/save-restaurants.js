@@ -5,11 +5,11 @@ let pool;
 function getPool() {
   if (!pool) {
     const databaseUrl = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
-    
+
     if (!databaseUrl) {
-      throw new Error('❌ DATABASE_URL non configurée');
+      throw new Error('DATABASE_URL non configurée');
     }
-    
+
     pool = new Pool({
       connectionString: databaseUrl,
       ssl: {
@@ -55,6 +55,42 @@ async function authenticateRequest(event) {
   return { ok: true, login: user.login };
 }
 
+/** Valide le payload et retourne la liste normalisée, ou une erreur. */
+function validatePayload(requestData) {
+  if (!requestData || typeof requestData !== 'object') {
+    return { error: 'Payload JSON invalide' };
+  }
+  const tested = requestData.tested ?? [];
+  const wishlist = requestData.wishlist ?? [];
+  if (!Array.isArray(tested) || !Array.isArray(wishlist)) {
+    return { error: '"tested" et "wishlist" doivent être des tableaux' };
+  }
+
+  const all = [
+    ...tested.map((r) => ({ ...r, status: 'tested' })),
+    ...wishlist.map((r) => ({ ...r, status: 'wishlist' })),
+  ];
+
+  for (const r of all) {
+    if (r.id == null || Number.isNaN(Number(r.id))) {
+      return { error: `ID manquant ou invalide pour "${r.name || '?'}"` };
+    }
+    if (!r.name || typeof r.name !== 'string') {
+      return { error: `Nom manquant pour le restaurant id=${r.id}` };
+    }
+    if (!r.type || typeof r.type !== 'string') {
+      return { error: `Type de cuisine manquant pour "${r.name}"` };
+    }
+  }
+
+  const ids = all.map((r) => String(r.id));
+  if (new Set(ids).size !== ids.length) {
+    return { error: 'IDs de restaurants dupliqués dans le payload' };
+  }
+
+  return { all };
+}
+
 exports.handler = async (event, context) => {
   const headers = {
     // Endpoint d'écriture : CORS restreint à l'origine du site (URL fournie par Netlify)
@@ -86,232 +122,138 @@ exports.handler = async (event, context) => {
     };
   }
 
+  let requestData;
+  try {
+    requestData = JSON.parse(event.body);
+  } catch {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ success: false, message: 'Corps de requête JSON invalide' })
+    };
+  }
+
+  const validation = validatePayload(requestData);
+  if (validation.error) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ success: false, message: validation.error })
+    };
+  }
+  const { all } = validation;
+
   const client = getPool();
 
   try {
-    console.log('💾 Sauvegarde des restaurants...');
-
-    await client.query('SELECT 1');
-    console.log('✅ Connection DB réussie');
-
-    const requestData = JSON.parse(event.body);
-    console.log('📊 Données reçues:', {
-      tested: requestData.tested?.length || 0,
-      wishlist: requestData.wishlist?.length || 0
-    });
-
     await client.query('BEGIN');
 
     try {
-      const existingIdsResult = await client.query(
-        'SELECT id, status FROM restaurants'
+      // 1) Upsert des types de cuisine en une requête
+      const cuisineNames = [...new Set(all.map((r) => r.type))];
+      if (cuisineNames.length > 0) {
+        await client.query(
+          `INSERT INTO cuisine_types (name)
+           SELECT unnest($1::text[])
+           ON CONFLICT (name) DO NOTHING`,
+          [cuisineNames]
+        );
+      }
+      const cuisineRows = await client.query('SELECT id, name FROM cuisine_types');
+      const cuisineIdByName = new Map(cuisineRows.rows.map((row) => [row.name, row.id]));
+
+      // 2) Supprimer les restaurants absents du payload
+      //    (ratings supprimés en cascade — ON DELETE CASCADE)
+      await client.query(
+        'DELETE FROM restaurants WHERE NOT (id = ANY($1::bigint[]))',
+        [all.map((r) => r.id)]
       );
-      const existingIds = new Map();
-      existingIdsResult.rows.forEach(row => {
-        existingIds.set(row.id.toString(), row.status);
-      });
 
-      const sentTestedIds = new Set(requestData.tested?.map(r => r.id.toString()) || []);
-      const sentWishlistIds = new Set(requestData.wishlist?.map(r => r.id.toString()) || []);
-      const allSentIds = new Set([...sentTestedIds, ...sentWishlistIds]);
+      // 3) Upsert de tous les restaurants en une requête (unnest multi-colonnes)
+      if (all.length > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        const cols = {
+          ids: all.map((r) => r.id),
+          names: all.map((r) => r.name),
+          cuisineIds: all.map((r) => cuisineIdByName.get(r.type)),
+          locations: all.map((r) => r.location || null),
+          addresses: all.map((r) => r.address || null),
+          latitudes: all.map((r) => r.coordinates?.lat ?? null),
+          longitudes: all.map((r) => r.coordinates?.lng ?? null),
+          priceRanges: all.map((r) => r.priceRange || '€€'),
+          photoUrls: all.map((r) => r.photo || null),
+          googleMapsUrls: all.map((r) => r.googleMapsUrl || null),
+          comments: all.map((r) => r.comment || null),
+          photosJson: all.map((r) => JSON.stringify(r.photos || [])),
+          reasons: all.map((r) => (r.status === 'wishlist' ? r.reason || null : null)),
+          statuses: all.map((r) => r.status),
+          datesAdded: all.map((r) => r.dateAdded || today),
+          datesVisited: all.map((r) => (r.status === 'tested' ? r.dateVisited || null : null)),
+        };
 
-      for (const [existingId, status] of existingIds) {
-        if (!allSentIds.has(existingId)) {
-          console.log('🗑️ Suppression restaurant ID:', existingId);
-          await client.query('DELETE FROM ratings WHERE restaurant_id = $1', [existingId]);
-          await client.query('DELETE FROM restaurants WHERE id = $1', [existingId]);
-        }
+        await client.query(
+          `INSERT INTO restaurants
+             (id, name, cuisine_type_id, location, address, latitude, longitude,
+              price_range, photo_url, google_maps_url, comment, photos, reason,
+              status, date_added, date_visited)
+           SELECT u.id, u.name, u.cuisine_type_id, u.location, u.address, u.latitude, u.longitude,
+                  u.price_range, u.photo_url, u.google_maps_url, u.comment, u.photos::jsonb, u.reason,
+                  u.status, u.date_added, u.date_visited
+           FROM unnest(
+             $1::bigint[], $2::text[], $3::integer[], $4::text[], $5::text[],
+             $6::decimal[], $7::decimal[], $8::text[], $9::text[], $10::text[],
+             $11::text[], $12::text[], $13::text[], $14::text[], $15::date[], $16::date[]
+           ) AS u(id, name, cuisine_type_id, location, address, latitude, longitude,
+                  price_range, photo_url, google_maps_url, comment, photos, reason,
+                  status, date_added, date_visited)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name,
+             cuisine_type_id = EXCLUDED.cuisine_type_id,
+             location = EXCLUDED.location,
+             address = EXCLUDED.address,
+             latitude = EXCLUDED.latitude,
+             longitude = EXCLUDED.longitude,
+             price_range = EXCLUDED.price_range,
+             photo_url = EXCLUDED.photo_url,
+             google_maps_url = EXCLUDED.google_maps_url,
+             comment = EXCLUDED.comment,
+             photos = EXCLUDED.photos,
+             reason = EXCLUDED.reason,
+             status = EXCLUDED.status,
+             date_added = EXCLUDED.date_added,
+             date_visited = EXCLUDED.date_visited,
+             updated_at = CURRENT_TIMESTAMP`,
+          [
+            cols.ids, cols.names, cols.cuisineIds, cols.locations, cols.addresses,
+            cols.latitudes, cols.longitudes, cols.priceRanges, cols.photoUrls, cols.googleMapsUrls,
+            cols.comments, cols.photosJson, cols.reasons, cols.statuses, cols.datesAdded, cols.datesVisited,
+          ]
+        );
       }
 
-      if (requestData.tested) {
-        for (const restaurant of requestData.tested) {
-          console.log('📝 Traitement restaurant testé:', restaurant.name, 'ID:', restaurant.id);
-          
-          if (!restaurant.id) {
-            throw new Error('❌ Restaurant ID manquant pour: ' + restaurant.name);
-          }
-
-          const cuisineResult = await client.query(
-            'SELECT id FROM cuisine_types WHERE name = $1',
-            [restaurant.type]
-          );
-          
-          if (cuisineResult.rows.length === 0) {
-            const newCuisineResult = await client.query(
-              'INSERT INTO cuisine_types (name, emoji) VALUES ($1, $2) RETURNING id',
-              [restaurant.type, '🍽️']
-            );
-            var cuisineTypeId = newCuisineResult.rows[0].id;
-          } else {
-            var cuisineTypeId = cuisineResult.rows[0].id;
-          }
-
-          const existingResult = await client.query(
-            'SELECT id FROM restaurants WHERE id = $1',
-            [restaurant.id]
-          );
-
-          if (existingResult.rows.length > 0) {
-            console.log('🔄 Mise à jour restaurant:', restaurant.id);
-            await client.query(`
-              UPDATE restaurants SET 
-                name = $1, 
-                cuisine_type_id = $2, 
-                location = $3,
-                address = $4,
-                latitude = $5,
-                longitude = $6,
-                google_maps_url = $7,
-                photo_url = $8,
-                comment = $9,
-                photos = $10,
-                status = $11,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE id = $12
-            `, [
-              restaurant.name,
-              cuisineTypeId,
-              restaurant.location,
-              restaurant.address || null,
-              restaurant.coordinates?.lat || null,
-              restaurant.coordinates?.lng || null,
-              restaurant.googleMapsUrl || null,
-              restaurant.photo || null,
-              restaurant.comment || null,
-              JSON.stringify(restaurant.photos || []),
-              'tested',
-              restaurant.id
-            ]);
-          } else {
-            console.log('➕ Nouveau restaurant:', restaurant.id);
-            await client.query(`
-              INSERT INTO restaurants 
-              (id, name, cuisine_type_id, location, address, latitude, longitude, google_maps_url, photo_url, comment, photos, status, date_added)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            `, [
-              restaurant.id,
-              restaurant.name,
-              cuisineTypeId,
-              restaurant.location,
-              restaurant.address || null,
-              restaurant.coordinates?.lat || null,
-              restaurant.coordinates?.lng || null,
-              restaurant.googleMapsUrl || null,
-              restaurant.photo || null,
-              restaurant.comment || null,
-              JSON.stringify(restaurant.photos || []),
-              'tested',
-              restaurant.dateAdded || new Date().toISOString().split('T')[0]
-            ]);
-          }
-
-          if (restaurant.ratings) {
-            console.log('⭐ Sauvegarde des notes pour:', restaurant.id);
-            await client.query(`
-              INSERT INTO ratings (restaurant_id, plats, vins, accueil, lieu)
-              VALUES ($1, $2, $3, $4, $5)
-              ON CONFLICT (restaurant_id) 
-              DO UPDATE SET 
-                plats = $2, 
-                vins = $3, 
-                accueil = $4, 
-                lieu = $5,
-                updated_at = CURRENT_TIMESTAMP
-            `, [
-              restaurant.id,
-              restaurant.ratings.plats,
-              restaurant.ratings.vins,
-              restaurant.ratings.accueil,
-              restaurant.ratings.lieu
-            ]);
-          }
-        }
-      }
-
-      if (requestData.wishlist) {
-        for (const restaurant of requestData.wishlist) {
-          console.log('📝 Traitement wishlist:', restaurant.name, 'ID:', restaurant.id);
-          
-          if (!restaurant.id) {
-            throw new Error('❌ Restaurant ID manquant pour: ' + restaurant.name);
-          }
-
-          const cuisineResult = await client.query(
-            'SELECT id FROM cuisine_types WHERE name = $1',
-            [restaurant.type]
-          );
-          
-          if (cuisineResult.rows.length === 0) {
-            const newCuisineResult = await client.query(
-              'INSERT INTO cuisine_types (name, emoji) VALUES ($1, $2) RETURNING id',
-              [restaurant.type, '🍽️']
-            );
-            var cuisineTypeId = newCuisineResult.rows[0].id;
-          } else {
-            var cuisineTypeId = cuisineResult.rows[0].id;
-          }
-
-          const existingResult = await client.query(
-            'SELECT id FROM restaurants WHERE id = $1',
-            [restaurant.id]
-          );
-
-          if (existingResult.rows.length > 0) {
-            await client.query(`
-              UPDATE restaurants SET 
-                name = $1, 
-                cuisine_type_id = $2, 
-                location = $3,
-                address = $4,
-                latitude = $5,
-                longitude = $6,
-                google_maps_url = $7,
-                photo_url = $8,
-                comment = $9, 
-                reason = $10,
-                status = $11,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE id = $12
-            `, [
-              restaurant.name,
-              cuisineTypeId,
-              restaurant.location,
-              restaurant.address || null,
-              restaurant.coordinates?.lat || null,
-              restaurant.coordinates?.lng || null,
-              restaurant.googleMapsUrl || null,
-              restaurant.photo || null,
-              restaurant.comment || null,
-              restaurant.reason || null,
-              'wishlist',
-              restaurant.id
-            ]);
-          } else {
-            await client.query(`
-              INSERT INTO restaurants 
-              (id, name, cuisine_type_id, location, address, latitude, longitude, google_maps_url, photo_url, comment, reason, status, date_added)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            `, [
-              restaurant.id,
-              restaurant.name,
-              cuisineTypeId,
-              restaurant.location,
-              restaurant.address || null,
-              restaurant.coordinates?.lat || null,
-              restaurant.coordinates?.lng || null,
-              restaurant.googleMapsUrl || null,
-              restaurant.photo || null,
-              restaurant.comment || null,
-              restaurant.reason || null,
-              'wishlist',
-              restaurant.dateAdded || new Date().toISOString().split('T')[0]
-            ]);
-          }
-        }
+      // 4) Upsert des notes en une requête (vins null = "vins non testés")
+      const rated = all.filter((r) => r.status === 'tested' && r.ratings);
+      if (rated.length > 0) {
+        await client.query(
+          `INSERT INTO ratings (restaurant_id, plats, vins, accueil, lieu)
+           SELECT * FROM unnest($1::bigint[], $2::decimal[], $3::decimal[], $4::decimal[], $5::decimal[])
+           ON CONFLICT (restaurant_id) DO UPDATE SET
+             plats = EXCLUDED.plats,
+             vins = EXCLUDED.vins,
+             accueil = EXCLUDED.accueil,
+             lieu = EXCLUDED.lieu,
+             updated_at = CURRENT_TIMESTAMP`,
+          [
+            rated.map((r) => r.id),
+            rated.map((r) => r.ratings.plats),
+            rated.map((r) => (r.winesNotTested ? null : r.ratings.vins ?? null)),
+            rated.map((r) => r.ratings.accueil),
+            rated.map((r) => r.ratings.lieu),
+          ]
+        );
       }
 
       await client.query('COMMIT');
-      console.log('✅ Sauvegarde réussie avec coordonnées GPS');
 
       return {
         statusCode: 200,
@@ -319,6 +261,7 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({
           success: true,
           message: 'Restaurants sauvegardés avec succès',
+          saved: all.length,
           timestamp: new Date().toISOString()
         })
       };
@@ -329,14 +272,14 @@ exports.handler = async (event, context) => {
     }
 
   } catch (error) {
-    console.error('❌ Erreur sauvegarde:', error);
+    console.error('Erreur sauvegarde:', error);
 
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         success: false,
-        error: 'Erreur sauvegarde', 
+        error: 'Erreur sauvegarde',
         message: error.message
       })
     };

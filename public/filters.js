@@ -4,19 +4,22 @@
  */
 
 /**
- * @typedef {{ cuisines: string[], prices: string[], locations: string[] }} Filters
- * @typedef {{ type: string, priceRange?: string, location: string }} Restaurant
+ * @typedef {{ cuisines: string[], prices: string[], locations: string[], query?: string }} Filters
+ * @typedef {{ name?: string, type: string, priceRange?: string, location: string }} Restaurant
  */
 
 /**
  * Filtre un tableau de restaurants selon les critères actifs.
  * Retourne tous les restaurants si un critère est vide (pas de filtre actif).
+ * `query` est une recherche plein-texte insensible à la casse sur le nom.
  *
  * @param {Restaurant[]} restaurants
  * @param {Filters} filters
  * @returns {Restaurant[]}
  */
 export function applyFilters(restaurants, filters) {
+  const query = (filters.query || '').trim().toLowerCase();
+
   return restaurants.filter(r => {
     const cuisineMatch = filters.cuisines.length === 0 ||
       filters.cuisines.includes(r.type);
@@ -27,7 +30,10 @@ export function applyFilters(restaurants, filters) {
     const locationMatch = filters.locations.length === 0 ||
       filters.locations.includes(r.location);
 
-    return cuisineMatch && priceMatch && locationMatch;
+    const queryMatch = query === '' ||
+      (r.name || '').toLowerCase().includes(query);
+
+    return cuisineMatch && priceMatch && locationMatch && queryMatch;
   });
 }
 
@@ -65,7 +71,8 @@ export function removeFilter(list, value) {
 export function hasActiveFilters(filters) {
   return filters.cuisines.length > 0 ||
     filters.prices.length > 0 ||
-    filters.locations.length > 0;
+    filters.locations.length > 0 ||
+    (filters.query || '').trim() !== '';
 }
 
 /**
@@ -74,7 +81,7 @@ export function hasActiveFilters(filters) {
  * @returns {Filters}
  */
 export function emptyFilters() {
-  return { cuisines: [], prices: [], locations: [] };
+  return { cuisines: [], prices: [], locations: [], query: '' };
 }
 
 // Exposition globale pour les environnements sans bundler (browser via <script>)

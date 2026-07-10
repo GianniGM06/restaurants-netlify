@@ -10,11 +10,11 @@ import {
 // ===== Données de test =====
 
 const restaurants = [
-  { id: 1, type: 'français',  priceRange: '€€',  location: '6ème' },
-  { id: 2, type: 'italien',   priceRange: '€€€', location: '11ème' },
-  { id: 3, type: 'japonais',  priceRange: '€€€', location: '6ème' },
-  { id: 4, type: 'français',  priceRange: '€',   location: '18ème' },
-  { id: 5, type: 'asiatique', priceRange: '€€',  location: '11ème' },
+  { id: 1, name: 'Le Comptoir',   type: 'français',  priceRange: '€€',  location: '6ème' },
+  { id: 2, name: 'La Trattoria',  type: 'italien',   priceRange: '€€€', location: '11ème' },
+  { id: 3, name: 'Sushi Yama',    type: 'japonais',  priceRange: '€€€', location: '6ème' },
+  { id: 4, name: 'Chez Marcel',   type: 'français',  priceRange: '€',   location: '18ème' },
+  { id: 5, name: 'Wok Impérial',  type: 'asiatique', priceRange: '€€',  location: '11ème' },
 ];
 
 // ===== applyFilters =====
@@ -66,6 +66,32 @@ describe('applyFilters', () => {
     const source = [...restaurants];
     applyFilters(restaurants, { cuisines: ['français'], prices: [], locations: [] });
     expect(restaurants).toHaveLength(source.length);
+  });
+
+  it('recherche par nom insensible à la casse', () => {
+    const result = applyFilters(restaurants, { ...emptyFilters(), query: 'comptoir' });
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(1);
+  });
+
+  it('recherche partielle', () => {
+    const result = applyFilters(restaurants, { ...emptyFilters(), query: 'ch' });
+    expect(result.map(r => r.id)).toEqual([4]);
+  });
+
+  it('query vide ou espaces = pas de filtre', () => {
+    expect(applyFilters(restaurants, { ...emptyFilters(), query: '   ' })).toHaveLength(5);
+  });
+
+  it('combine recherche et cuisine', () => {
+    const result = applyFilters(restaurants, { ...emptyFilters(), cuisines: ['français'], query: 'marcel' });
+    expect(result.map(r => r.id)).toEqual([4]);
+  });
+
+  it('tolère les restaurants sans nom', () => {
+    const noName = [{ id: 9, type: 'test', location: 'Paris' }];
+    expect(applyFilters(noName, { ...emptyFilters(), query: 'x' })).toHaveLength(0);
+    expect(applyFilters(noName, emptyFilters())).toHaveLength(1);
   });
 });
 
@@ -127,6 +153,14 @@ describe('hasActiveFilters', () => {
 
   it('retourne true si locations non vide', () => {
     expect(hasActiveFilters({ cuisines: [], prices: [], locations: ['6ème'] })).toBe(true);
+  });
+
+  it('retourne true si une recherche est saisie', () => {
+    expect(hasActiveFilters({ ...emptyFilters(), query: 'sushi' })).toBe(true);
+  });
+
+  it('ignore une recherche composée d\'espaces', () => {
+    expect(hasActiveFilters({ ...emptyFilters(), query: '  ' })).toBe(false);
   });
 });
 

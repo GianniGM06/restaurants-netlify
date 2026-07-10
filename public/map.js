@@ -1,6 +1,7 @@
 /* ===== MODULE CARTE — Leaflet dynamique + géolocalisation ===== */
 
 import { escapeHtml } from './ui.js';
+import { calculateRating } from './rating.js';
 
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS  = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
@@ -82,7 +83,7 @@ export class MapManager {
 
     filteredData.tested.forEach(r => {
       if (!r.coordinates) return;
-      const rating = this._calcRating(r);
+      const rating = calculateRating(r.ratings, r.winesNotTested);
       const dist = this.userPosition ? calculateDistance(this.userPosition.lat, this.userPosition.lng, r.coordinates.lat, r.coordinates.lng) : null;
       const marker = L.marker([r.coordinates.lat, r.coordinates.lng], { icon: makeIcon(ICON_BLUE) }).addTo(this.map);
       marker.bindPopup(`
@@ -145,11 +146,6 @@ export class MapManager {
     );
   }
 
-  _calcRating(r) {
-    const { plats, vins, accueil, lieu } = r.ratings;
-    if (r.winesNotTested || vins === null) return (plats * 2 + accueil * 1.5 + lieu) / 4.5;
-    return (plats * 2 + vins * 1.5 + accueil * 1.5 + lieu) / 6;
-  }
 }
 
 if (typeof window !== 'undefined') {

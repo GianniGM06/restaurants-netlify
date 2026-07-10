@@ -10,18 +10,45 @@ export function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-export function showToast(message, type = 'info', duration = 3000) {
+const TOAST_ICONS = {
+  success: 'bi-check-circle-fill',
+  danger: 'bi-exclamation-triangle-fill',
+  warning: 'bi-exclamation-circle-fill',
+  info: 'bi-info-circle-fill',
+};
+
+function toastContainer() {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.setAttribute('aria-hidden', 'true'); // annonces SR via #sr-announcer
+    document.body.appendChild(container);
+  }
+  return container;
+}
+
+export function showToast(message, type = 'info', duration = 3500) {
   try {
+    // Design sobre : on retire les emojis de tête hérités des anciens messages,
+    // l'icône est portée par le type
+    const text = String(message).replace(/^[\s\p{Extended_Pictographic}\u{FE0F}\u{200D}]+/u, '').trim() || String(message);
+
     const toast = document.createElement('div');
-    toast.className = `alert alert-${type} position-fixed`;
-    toast.style.cssText = 'top:20px;right:20px;z-index:9999;min-width:300px;opacity:0.9;';
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.parentNode && toast.remove(), duration);
+    toast.className = `app-toast app-toast-${type}`;
+    toast.innerHTML = `<i class="bi ${TOAST_ICONS[type] || TOAST_ICONS.info}" aria-hidden="true"></i><span></span>`;
+    toast.querySelector('span').textContent = text;
+    toastContainer().appendChild(toast);
+
+    setTimeout(() => {
+      toast.classList.add('is-leaving');
+      setTimeout(() => toast.remove(), 250);
+    }, duration);
+
     const announcer = document.getElementById('sr-announcer');
     if (announcer) {
       announcer.textContent = '';
-      requestAnimationFrame(() => { announcer.textContent = message; });
+      requestAnimationFrame(() => { announcer.textContent = text; });
     }
   } catch {
     alert(message);
@@ -60,11 +87,11 @@ export function showLoadingSkeleton() {
 export function updateSyncStatus(statusBadge, customStatus = null, isAuthenticated = false) {
   if (!statusBadge || isAuthenticated) return;
   if (customStatus) {
-    statusBadge.className = 'badge bg-warning fs-6';
+    statusBadge.className = 'badge bg-warning';
     statusBadge.textContent = customStatus;
   } else {
-    statusBadge.className = 'badge bg-info fs-6';
-    statusBadge.textContent = '⚡ Neon DB';
+    statusBadge.className = 'badge bg-info';
+    statusBadge.textContent = 'En ligne';
   }
 }
 

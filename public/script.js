@@ -4,6 +4,8 @@ import './auth.js';
 import './map.js';
 import './filters.js';
 import { escapeHtml } from './ui.js';
+import { calculateRating } from './rating.js';
+import { initTheme } from './theme.js';
 
 /* Image de repli locale (data URI) — remplace via.placeholder.com, service mort */
 const FALLBACK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='100%25' height='100%25' fill='%23e9ecef'/%3E%3Ctext x='50%25' y='50%25' font-family='sans-serif' font-size='11' fill='%236c757d' text-anchor='middle' dy='.35em'%3EImage indisponible%3C/text%3E%3C/svg%3E";
@@ -40,61 +42,87 @@ class RestaurantApp {
     this.currentPhotos = [];
     this.currentPhotoIndex = 0;
 
-    // NOUVEAU : État des filtres
+    // État des filtres
     this.filters = {
         cuisines: [],
         prices: [],
-        locations: []
+        locations: [],
+        query: ''
     };
     this.filteredData = {
         tested: [],
         wishlist: []
     };
-
-    console.log(
-      "🚀 Application initialisée avec Netlify Functions + GitHub Auth"
-    );
   }
 
   /* ===== CHARGEMENT INITIAL ===== */
   async init() {
-    console.log("🚀 Début initialisation...");
-
     try {
       // Toujours configurer l'UI d'abord
       this.setupUI();
-      console.log("✅ UI configurée");
 
       // Afficher le skeleton pendant le chargement
       this.showLoadingSkeleton();
 
       // Vérifier l'authentification GitHub
       await this.handleAuthentication();
-      console.log("✅ Authentification vérifiée");
 
       // Charger les données via Netlify Functions
       await this.loadData();
-      console.log("✅ Données chargées");
 
       this.render();
-      console.log("✅ Rendu effectué");
-
-      this.showToast("✅ Application prête !", "success");
     } catch (error) {
-      console.error("❌ Erreur initialisation:", error);
-
-      // En cas d'erreur, utiliser les données par défaut
-      this.data = {
-        tested: this.getDefaultTestedData(),
-        wishlist: this.getDefaultWishlistData(),
-        cuisineTypes: this.getDefaultCuisineTypes(),
-      };
-
-      this.render();
-      this.showToast("⚠️ Données par défaut chargées", "warning");
+      console.error("Erreur initialisation:", error);
+      // État d'erreur honnête : pas de fausses données de démo
+      this.renderErrorState();
     }
 
     this.updateSyncStatus();
+  }
+
+  /* ===== ÉTAT D'ERREUR ===== */
+  renderErrorState() {
+    const errorHtml = `
+        <div class="col-12">
+            <div class="error-state text-center py-5">
+                <i class="bi bi-wifi-off fs-1 mb-3 d-block" aria-hidden="true"></i>
+                <h4>Impossible de charger les données</h4>
+                <p class="text-muted mb-4">Le serveur ne répond pas. Vérifiez votre connexion puis réessayez.</p>
+                <button class="btn btn-primary" data-action="retry">
+                    <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Réessayer
+                </button>
+            </div>
+        </div>
+    `;
+    const tested = document.getElementById("tested-grid");
+    const wishlist = document.getElementById("wishlist-grid");
+    if (tested) tested.innerHTML = errorHtml;
+    if (wishlist) wishlist.innerHTML = errorHtml;
+
+    document.getElementById("tested-count").textContent = "--";
+    document.getElementById("wishlist-count").textContent = "--";
+    document.getElementById("avg-rating").textContent = "--";
+
+    const modeIndicator = document.getElementById("mode-indicator");
+    if (modeIndicator) {
+      modeIndicator.className = "mode-pill is-danger";
+      modeIndicator.innerHTML = '<i class="bi bi-exclamation-triangle" aria-hidden="true"></i> Données indisponibles';
+    }
+    this.updateSyncStatus("Hors ligne");
+  }
+
+  async retryLoad() {
+    this.showLoadingSkeleton();
+    try {
+      await this.loadData();
+      this.render();
+      this.updateSyncStatus();
+      this.showToast("Données chargées !", "success");
+    } catch (error) {
+      console.error("Erreur rechargement:", error);
+      this.renderErrorState();
+      this.showToast("Toujours impossible de joindre le serveur", "danger");
+    }
   }
 
   showLoadingSkeleton() { window.UI.showLoadingSkeleton(); }
@@ -131,11 +159,11 @@ class RestaurantApp {
     const statusBadge = document.getElementById("status-badge");
     if (statusBadge) {
       if (isAuthenticated) {
-        statusBadge.className = "badge bg-success fs-6";
-        statusBadge.innerHTML = `✅ ${escapeHtml(this.githubAuth.userInfo.login)} <button class="btn btn-sm btn-outline-light ms-1" onclick="app.githubLogout()" title="Se déconnecter"><i class="bi bi-box-arrow-right" aria-hidden="true"></i></button>`;
+        statusBadge.className = "badge bg-success";
+        statusBadge.innerHTML = `${escapeHtml(this.githubAuth.userInfo.login)} <button class="btn btn-sm btn-outline-light ms-1" onclick="app.githubLogout()" title="Se déconnecter"><i class="bi bi-box-arrow-right" aria-hidden="true"></i></button>`;
       } else {
-        statusBadge.className = "badge bg-secondary fs-6";
-        statusBadge.textContent = "👀 Mode lecture";
+        statusBadge.className = "badge bg-secondary";
+        statusBadge.textContent = "Lecture seule";
       }
     }
 
@@ -143,21 +171,17 @@ class RestaurantApp {
     const modeIndicator = document.getElementById("mode-indicator");
     if (modeIndicator) {
       if (isAuthenticated) {
-        modeIndicator.className = "alert alert-success d-inline-block";
+        modeIndicator.className = "mode-pill is-success";
         modeIndicator.innerHTML = `
     <i class="bi bi-github" aria-hidden="true"></i>
-    <strong>Connecté :</strong> ${escapeHtml(this.githubAuth.userInfo.login)}
-    <button class="btn btn-sm btn-outline-success ms-2" onclick="app.githubLogout()">
-        <i class="bi bi-box-arrow-right" aria-hidden="true"></i> Se déconnecter
-    </button>
-    <br><small>⚡ Mode édition activé - Données sur Neon DB</small>
+    Connecté : <strong>${escapeHtml(this.githubAuth.userInfo.login)}</strong> — mode édition
+    <button class="btn btn-sm btn-link p-0 ms-2 align-baseline" onclick="app.githubLogout()">Se déconnecter</button>
 `;
       } else {
-        modeIndicator.className = "alert alert-info d-inline-block";
+        modeIndicator.className = "mode-pill is-info";
         modeIndicator.innerHTML = `
-                    <i class="bi bi-eye-fill"></i>
-                    <strong>Mode lecture seule</strong>
-                    <br><small>🔑 Connectez-vous avec GitHub pour modifier</small>
+                    <i class="bi bi-eye" aria-hidden="true"></i>
+                    Mode lecture seule — connectez-vous avec GitHub pour modifier
                 `;
       }
     }
@@ -204,7 +228,7 @@ class RestaurantApp {
                         <h5 class="modal-title">
                             <i class="bi bi-github"></i> Configuration GitHub
                         </h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
                         <div class="mb-3">
@@ -347,21 +371,15 @@ class RestaurantApp {
 
   /* ===== SAUVEGARDE AUTOMATIQUE ===== */
   async autoSave() {
-    if (!this.isEditMode) {
-      console.log("⚠️ Mode lecture, pas de sauvegarde");
-      return;
-    }
+    if (!this.isEditMode) return;
 
-    console.log("💾 Sauvegarde automatique...");
-
-    this.updateSyncStatus("💾 Sauvegarde...");
+    this.updateSyncStatus("Sauvegarde…");
 
     try {
       const success = await this.saveData();
 
       if (success) {
-        console.log("✅ Sauvegarde automatique réussie");
-        this.updateSyncStatus("✅ Sauvegardé");
+        this.updateSyncStatus("Sauvegardé");
         this.setSyncWarning(false);
 
         setTimeout(() => {
@@ -371,11 +389,11 @@ class RestaurantApp {
         throw new Error("Échec de la sauvegarde");
       }
     } catch (error) {
-      console.error("❌ Erreur sauvegarde automatique:", error);
-      this.updateSyncStatus("⚠️ Non synchronisé");
+      console.error("Erreur sauvegarde automatique:", error);
+      this.updateSyncStatus("Non synchronisé");
       this.setSyncWarning(true);
       this.showToast(
-        "❌ Sauvegarde échouée — vos modifications ne sont pas enregistrées. Vérifiez votre connexion puis relancez via « Actualiser ».",
+        "Sauvegarde échouée — vos modifications ne sont pas enregistrées. Vérifiez votre connexion puis relancez via « Actualiser ».",
         "danger"
       );
 
@@ -389,7 +407,6 @@ class RestaurantApp {
 
   /* ===== CONFIGURATION UI ===== */
   setupUI() {
-    console.log("🔧 Configuration UI...");
 
     // Mise à jour du statut
     this.updateSyncStatus();
@@ -434,6 +451,7 @@ class RestaurantApp {
           case 'add': this.openAddModal(type); break;
           case 'clear-filters': this.clearAllFilters(); break;
           case 'github-config': this.openGitHubConfig(); break;
+          case 'retry': this.retryLoad(); break;
         }
       });
     });
@@ -475,7 +493,6 @@ class RestaurantApp {
   }
 
   setupEventListeners() {
-    console.log("🔧 Configuration des event listeners...");
 
     try {
       // Boutons synchronisation
@@ -587,7 +604,6 @@ if (nearbyBtn) {
         });
     });
 
-      console.log("✅ Event listeners configurés");
     } catch (error) {
       console.warn("⚠️ Erreur setup event listeners:", error);
     }
@@ -893,7 +909,6 @@ nextPhoto() {
   openAddModal(type) {
     if (!this.checkEditPermission()) return;
 
-    console.log("📝 Ouverture modal:", type);
 
     const modal = new bootstrap.Modal(
       document.getElementById("restaurant-modal")
@@ -1006,11 +1021,6 @@ updatePhotoComment(index, comment) {
     const type = document.getElementById("restaurant-type").value;
     const isEdit = !!id;
 
-    console.log("🔍 === DEBUG JAVASCRIPT SAVE ===");
-    console.log("Form ID value:", id);
-    console.log("Is edit mode:", isEdit);
-    console.log("ID exists and not empty:", id && id.trim() !== "");
-    console.log("User authenticated:", this.isEditMode);
 
     // Traiter le type de cuisine
     const cuisineInput = document.getElementById("restaurant-cuisine").value;
@@ -1025,7 +1035,6 @@ if (address && address.trim() !== '') {
   coordinates = await this.geocodeAddress(address);
   
   if (coordinates) {
-    console.log('✅ Coordonnées trouvées:', coordinates);
     this.showToast("✅ Coordonnées GPS trouvées !", "success");
   }
 }
@@ -1034,10 +1043,8 @@ if (address && address.trim() !== '') {
     let restaurantId;
     if (isEdit && id && id.trim() !== "") {
       restaurantId = parseInt(id);
-      console.log("🔄 Using existing ID:", restaurantId);
     } else {
       restaurantId = Date.now();
-      console.log("➕ Generated new ID:", restaurantId);
     }
 
     // Vérifier que l'ID est valide
@@ -1065,9 +1072,6 @@ if (address && address.trim() !== '') {
     : new Date().toISOString().split("T")[0],
 };
 
-    console.log("🔍 Final restaurant data:", restaurantData);
-    console.log("🔍 Restaurant ID type:", typeof restaurantData.id);
-    console.log("🔍 Restaurant ID value:", restaurantData.id);
 
     if (type === "tested") {
       const winesNotTested = document.getElementById('wines-not-tested')?.checked || false;
@@ -1113,7 +1117,6 @@ if (address && address.trim() !== '') {
     // Sauvegarde automatique en arrière-plan
     try {
       await this.autoSave();
-      console.log("✅ Sauvegarde réussie");
     } catch (error) {
       console.error("❌ Erreur sauvegarde:", error);
       this.showToast(
@@ -1126,7 +1129,6 @@ if (address && address.trim() !== '') {
   editRestaurant(id, type) {
     if (!this.checkEditPermission()) return;
 
-    console.log("✏️ Édition restaurant ID:", id, "Type:", type);
 
     const restaurant = this.data[type].find((r) => r.id == id); // Utiliser == pour éviter les problèmes de type
     if (!restaurant) {
@@ -1135,7 +1137,6 @@ if (address && address.trim() !== '') {
       return;
     }
 
-    console.log("✏️ Restaurant trouvé:", restaurant.name);
 
     // Remplir le formulaire
     document.getElementById("restaurant-id").value = id;
@@ -1217,7 +1218,6 @@ if (address && address.trim() !== '') {
   async deleteRestaurant(id, type) {
     if (!this.checkEditPermission()) return;
     
-    console.log('🗑️ Suppression restaurant ID:', id, 'Type:', type);
     
     const restaurant = this.data[type].find(r => r.id == id);
     if (!restaurant) {
@@ -1280,7 +1280,7 @@ if (address && address.trim() !== '') {
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title">🌟 Transférer vers "Testés"</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
                         <p>Ajoutez vos notes pour <strong id="transfer-restaurant-name"></strong> :</p>
@@ -1399,7 +1399,7 @@ if (address && address.trim() !== '') {
                     <h5 class="modal-title">
                         <i class="bi bi-exclamation-triangle-fill"></i> Confirmer la suppression
                     </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body text-center">
                     <i class="bi bi-trash3 text-danger" style="font-size: 3rem;"></i>
@@ -1452,7 +1452,6 @@ async confirmDelete() {
     const id = parseInt(document.getElementById('delete-restaurant-id').value);
     const type = document.getElementById('delete-restaurant-type').value;
     
-    console.log('🗑️ Confirmation de suppression pour ID:', id, 'Type:', type);
     
     const restaurant = this.data[type].find(r => r.id == id);
     if (!restaurant) {
@@ -1472,7 +1471,6 @@ async confirmDelete() {
     // Sauvegarde automatique en arrière-plan
     try {
         await this.autoSave();
-        console.log('✅ Suppression sauvegardée');
     } catch (error) {
         console.error('❌ Erreur sauvegarde suppression:', error);
         // Recharger les données en cas d'erreur
@@ -1489,11 +1487,9 @@ async confirmDelete() {
       const cuisineDropdown = document.getElementById("cuisine-dropdown");
 
       if (!cuisineInput || !cuisineDropdown) {
-        console.log("⚠️ Éléments cuisine pas encore dans le DOM");
         return;
       }
 
-      console.log("✅ Setup autocomplete cuisine");
 
       // Sélection d'une option par délégation (les items sont regénérés en innerHTML)
       cuisineDropdown.addEventListener("click", (e) => {
@@ -1529,7 +1525,6 @@ async confirmDelete() {
     try {
       const dropdown = document.getElementById("cuisine-dropdown");
       if (!dropdown) {
-        console.log("⚠️ Dropdown cuisine pas trouvé");
         return;
       }
 
@@ -1556,11 +1551,6 @@ async confirmDelete() {
         })
         .join("");
 
-      console.log(
-        "✅ Dropdown cuisine mise à jour avec",
-        sortedCuisines.length,
-        "options"
-      );
     } catch (error) {
       console.warn("⚠️ Erreur update cuisine dropdown:", error);
     }
@@ -1622,7 +1612,6 @@ async confirmDelete() {
       };
 
       this.data.cuisineTypes.push(newType);
-      console.log("Nouveau type de cuisine ajouté:", newType);
     }
 
     return normalizedValue;
@@ -1650,21 +1639,8 @@ async confirmDelete() {
 
   /* ===== UTILITAIRES ===== */
   calculateRating(ratings, winesNotTested = false) {
-    if (winesNotTested || ratings.vins === null) {
-      // Sans les vins : (Plats × 2 + Accueil × 1.5 + Lieu × 1) ÷ 4.5
-      return (
-        (ratings.plats * 2 + ratings.accueil * 1.5 + ratings.lieu * 1) / 4.5
-      );
-    } else {
-      // Avec les vins : formule normale
-      return (
-        (ratings.plats * 2 +
-          ratings.vins * 1.5 +
-          ratings.accueil * 1.5 +
-          ratings.lieu * 1) /
-        6
-      );
-    }
+    // Logique pure partagée avec map.js — voir rating.js (testé par Vitest)
+    return calculateRating(ratings, winesNotTested);
   }
 
   async geocodeAddress(address) {
@@ -1723,7 +1699,6 @@ populateFilterOptions() {
 }
 
 setupFilterEvents() {
-    console.log('🔧 Configuration des événements de filtres...');
     
     // Événements pour le dropdown cuisine
 const cuisineMenu = document.getElementById('cuisine-dropdown-menu');
@@ -1755,7 +1730,6 @@ if (cuisineMenu) {
             this.updateDropdownButtonText('cuisineDropdownBtn', this.filters.cuisines.length, 'Cuisine');
             this.applyFilters();
             
-            console.log('✅ Filtre cuisine mis à jour:', this.filters.cuisines);
         }
     });
 } else {
@@ -1793,7 +1767,6 @@ if (locationMenu) {
             this.updateDropdownButtonText('locationDropdownBtn', this.filters.locations.length, 'Lieu');
             this.applyFilters();
             
-            console.log('✅ Filtre location mis à jour:', this.filters.locations);
         }
     });
 } else {
@@ -1817,10 +1790,18 @@ if (locationMenu) {
             
             this.applyFilters();
             
-            console.log('✅ Filtre prix mis à jour:', this.filters.prices);
         });
     });
     
+    // Recherche par nom
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            this.filters.query = e.target.value;
+            this.applyFilters();
+        });
+    }
+
     // Bouton effacer filtres
     const clearBtn = document.getElementById('clear-filters-btn');
     if (clearBtn) {
@@ -1828,8 +1809,6 @@ if (locationMenu) {
             this.clearAllFilters();
         });
     }
-    
-    console.log('✅ Événements de filtres configurés');
 }
 
 updateDropdownButtonText(btnId, count, label) {
@@ -2069,15 +2048,19 @@ updateClearButton() {
 }
 
 clearAllFilters() {
-    console.log('🧹 Effacement des filtres...');
-    
     // Reset des filtres
     this.filters = {
         cuisines: [],
         prices: [],
-        locations: []
+        locations: [],
+        query: ''
     };
-    
+
+    // Reset du champ de recherche
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) searchInput.value = '';
+
+
     // Reset des dropdowns cuisine
     const cuisineMenu = document.getElementById('cuisine-dropdown-menu');
     if (cuisineMenu) {
@@ -2115,7 +2098,6 @@ clearAllFilters() {
     // Réappliquer les filtres (vides)
     this.applyFilters();
     
-    console.log('✅ Filtres effacés');
 }
 
 // ✅ CORRECTION 4 : Les méthodes loadFiltersState et restoreFiltersUI ont été supprimées
@@ -2159,52 +2141,14 @@ clearAllFilters() {
     ];
   }
 
-  getDefaultTestedData() {
-    return [
-      {
-        id: 1,
-        name: "Le Comptoir du Relais",
-        type: "français",
-        location: "6ème arrondissement",
-        address: "9 Carrefour de l'Odéon, 75006 Paris",
-        coordinates: { lat: 48.8534, lng: 2.3387 },
-        ratings: { plats: 4.5, vins: 4.0, accueil: 4.5, lieu: 4.0 },
-        comment: "Bistrot authentique avec une cuisine excellente !",
-        dateVisited: "2024-12-15",
-        dateAdded: "2024-12-15",
-        priceRange: "€€",
-        googleMapsUrl: "https://maps.google.com/?q=Le+Comptoir+du+Relais+Paris",
-        photo:
-          "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop",
-      },
-    ];
-  }
-
-  getDefaultWishlistData() {
-    return [
-      {
-        id: 4,
-        name: "L'Ami Jean",
-        type: "français",
-        location: "7ème arrondissement",
-        address: "27 rue Malar, 75007 Paris",
-        coordinates: { lat: 48.8584, lng: 2.3019 },
-        reason: "Recommandé par un ami pour la cuisine basque",
-        dateAdded: "2024-12-01",
-        priceRange: "€€€",
-        googleMapsUrl: "https://maps.google.com/?q=Le+Comptoir+du+Relais+Paris",
-        photo:
-          "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=250&fit=crop",
-      },
-    ];
-  }
 }
 
 /* ===== INITIALISATION ===== */
 let app;
 
 document.addEventListener("DOMContentLoaded", async () => {
-  console.log("🚀 Démarrage de l'application Netlify...");
+
+  initTheme();
 
   app = new RestaurantApp();
   // Exposé pour les handlers inline (onclick="app.…") — script.js est un module,
@@ -2243,7 +2187,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  console.log("✅ Application Netlify prête !");
 });
 
 /* ===== FONCTIONS GLOBALES (utilisées par les onclick inline de index.html) ===== */
