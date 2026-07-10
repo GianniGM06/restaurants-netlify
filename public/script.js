@@ -1,72 +1,17 @@
-/* ===== SERVICE D'AUTHENTIFICATION GITHUB ===== */
+/* ===== MODULES (ES modules — exposent aussi window.* pour compat) ===== */
+import './api.js';
+import './auth.js';
+import './map.js';
+import './filters.js';
+import { escapeHtml } from './ui.js';
 
-class GitHubAuthService {
-  constructor() {
-    this.token = localStorage.getItem("github-token") || null;
-    this.isAuthenticated = false;
-  }
+/* Image de repli locale (data URI) — remplace via.placeholder.com, service mort */
+const FALLBACK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='100%25' height='100%25' fill='%23e9ecef'/%3E%3Ctext x='50%25' y='50%25' font-family='sans-serif' font-size='11' fill='%236c757d' text-anchor='middle' dy='.35em'%3EImage indisponible%3C/text%3E%3C/svg%3E";
+if (typeof window !== 'undefined') window.FALLBACK_IMG = FALLBACK_IMG;
 
-  async authenticate(token) {
-    if (!token || token.trim() === "") {
-      throw new Error("Token GitHub requis");
-    }
-
-    try {
-      // Tester le token avec l'API GitHub
-      const response = await fetch("https://api.github.com/user", {
-        headers: {
-          Authorization: `token ${token.trim()}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("Token GitHub invalide");
-        } else {
-          throw new Error(`Erreur GitHub API: ${response.status}`);
-        }
-      }
-
-      const userData = await response.json();
-
-      // Sauvegarder le token et les infos utilisateur
-      this.token = token.trim();
-      this.userInfo = userData;
-      this.isAuthenticated = true;
-
-      localStorage.setItem("github-token", this.token);
-
-      console.log("✅ Authentification GitHub réussie:", userData.login);
-      return userData;
-    } catch (error) {
-      this.logout();
-      throw error;
-    }
-  }
-
-  logout() {
-    this.token = null;
-    this.userInfo = null;
-    this.isAuthenticated = false;
-    localStorage.removeItem("github-token");
-    console.log("🔓 Déconnexion GitHub");
-  }
-
-  async checkStoredToken() {
-    if (this.token) {
-      try {
-        await this.authenticate(this.token);
-        return true;
-      } catch (error) {
-        console.log("⚠️ Token stocké invalide, déconnexion");
-        this.logout();
-        return false;
-      }
-    }
-    return false;
-  }
-}
+/* ===== SERVICE D'AUTHENTIFICATION GITHUB (auth.js) ===== */
+// Délégué à window.Auth.GitHubAuthService (chargé par auth.js)
+const GitHubAuthService = window.Auth.GitHubAuthService;
 
 /* ===== APPLICATION RESTAURANT AVEC NETLIFY FUNCTIONS + GITHUB AUTH ===== */
 
@@ -75,8 +20,14 @@ class RestaurantApp {
     // Configuration de l'API (Netlify Functions)
     this.apiBase = "/api"; // Les functions sont accessibles via /api/*
 
-    // Service d'authentification GitHub
+    // Service d'authentification GitHub (auth.js)
     this.githubAuth = new GitHubAuthService();
+
+    // Gestionnaire de carte (map.js)
+    this.mapManager = new window.MapModule.MapManager({
+      generateStars: (r) => window.UI.generateStars(r),
+      showToast: (m, t) => window.UI.showToast(m, t),
+    });
 
     // État de l'application
     this.data = {
@@ -85,11 +36,7 @@ class RestaurantApp {
       cuisineTypes: [],
     };
 
-    this.isEditMode = false; // Par défaut en lecture, devient true avec auth GitHub
-    this.map = null;
-    this.userMarker = null;
-    this.userPosition = null;
-    this.restaurantMarkers = [];
+    this.isEditMode = false;
     this.currentPhotos = [];
     this.currentPhotoIndex = 0;
 
@@ -117,6 +64,9 @@ class RestaurantApp {
       // Toujours configurer l'UI d'abord
       this.setupUI();
       console.log("✅ UI configurée");
+
+      // Afficher le skeleton pendant le chargement
+      this.showLoadingSkeleton();
 
       // Vérifier l'authentification GitHub
       await this.handleAuthentication();
@@ -146,6 +96,8 @@ class RestaurantApp {
 
     this.updateSyncStatus();
   }
+
+  showLoadingSkeleton() { window.UI.showLoadingSkeleton(); }
 
   /* ===== GESTION AUTHENTIFICATION GITHUB ===== */
   async handleAuthentication() {
@@ -180,7 +132,7 @@ class RestaurantApp {
     if (statusBadge) {
       if (isAuthenticated) {
         statusBadge.className = "badge bg-success fs-6";
-        statusBadge.innerHTML = `✅ ${this.githubAuth.userInfo.login} <button class="btn btn-sm btn-outline-light ms-1" onclick="app.githubLogout()" title="Se déconnecter"><i class="bi bi-box-arrow-right"></i></button>`;
+        statusBadge.innerHTML = `✅ ${escapeHtml(this.githubAuth.userInfo.login)} <button class="btn btn-sm btn-outline-light ms-1" onclick="app.githubLogout()" title="Se déconnecter"><i class="bi bi-box-arrow-right" aria-hidden="true"></i></button>`;
       } else {
         statusBadge.className = "badge bg-secondary fs-6";
         statusBadge.textContent = "👀 Mode lecture";
@@ -193,10 +145,10 @@ class RestaurantApp {
       if (isAuthenticated) {
         modeIndicator.className = "alert alert-success d-inline-block";
         modeIndicator.innerHTML = `
-    <i class="bi bi-github"></i>
-    <strong>Connecté :</strong> ${this.githubAuth.userInfo.login}
+    <i class="bi bi-github" aria-hidden="true"></i>
+    <strong>Connecté :</strong> ${escapeHtml(this.githubAuth.userInfo.login)}
     <button class="btn btn-sm btn-outline-success ms-2" onclick="app.githubLogout()">
-        <i class="bi bi-box-arrow-right"></i> Se déconnecter
+        <i class="bi bi-box-arrow-right" aria-hidden="true"></i> Se déconnecter
     </button>
     <br><small>⚡ Mode édition activé - Données sur Neon DB</small>
 `;
@@ -351,83 +303,32 @@ class RestaurantApp {
     this.showToast("🔓 Déconnecté de GitHub", "info");
   }
 
-  /* ===== CHARGEMENT DES DONNÉES VIA NETLIFY FUNCTIONS ===== */
+  /* ===== CHARGEMENT DES DONNÉES (api.js) ===== */
   async loadData() {
-    console.log("📖 Chargement des données via Netlify Functions...");
-
-    try {
-      const response = await fetch(`${this.apiBase}/get-restaurants`);
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
-      }
-
-      const jsonData = await response.json();
-      console.log("✅ Données reçues via API");
-
-      // Parser les données
-      this.data = {
-        tested: jsonData.tested || [],
-        wishlist: jsonData.wishlist || [],
-        cuisineTypes: this.parseCuisineTypes(jsonData.cuisineTypes || {}),
-      };
-
-      console.log("📊 Données parsées:", {
-        tested: this.data.tested.length,
-        wishlist: this.data.wishlist.length,
-        cuisines: this.data.cuisineTypes.length,
-      });
-
-      // ✨ NOUVEAU : Populer les dropdowns ICI, juste après avoir les données
-        this.populateFilterOptions();
-        console.log("✅ Options de filtres peuplées");
-
-      // Afficher info de mise à jour
-      if (jsonData.metadata?.lastUpdated) {
-        const lastUpdate = new Date(jsonData.metadata.lastUpdated);
-        console.log("🕒 Dernière mise à jour:", lastUpdate.toLocaleString());
-        this.showToast(
-          `📅 Données à jour : ${lastUpdate.toLocaleString()}`,
-          "info"
-        );
-      }
-    } catch (error) {
-      console.error("❌ Erreur chargement API:", error);
-      throw error;
+    const jsonData = await window.Api.fetchRestaurants();
+    this.data = {
+      tested: jsonData.tested || [],
+      wishlist: jsonData.wishlist || [],
+      cuisineTypes: this.parseCuisineTypes(jsonData.cuisineTypes || {}),
+    };
+    this.populateFilterOptions();
+    if (jsonData.metadata?.lastUpdated) {
+      const lastUpdate = new Date(jsonData.metadata.lastUpdated);
+      this.showToast(`📅 Données à jour : ${lastUpdate.toLocaleString()}`, 'info');
     }
   }
 
-  /* ===== SAUVEGARDE VIA NETLIFY FUNCTIONS ===== */
+  /* ===== SAUVEGARDE (api.js) ===== */
   async saveData() {
-    console.log("💾 Sauvegarde via Netlify Functions...");
-
     try {
-      const payload = {
+      await window.Api.persistRestaurants({
         tested: this.data.tested,
         wishlist: this.data.wishlist,
         cuisineTypes: this.generateCuisineTypesObject(),
-      };
-
-      const response = await fetch(`${this.apiBase}/save-restaurants`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Erreur sauvegarde");
-      }
-
-      const result = await response.json();
-      console.log("✅ Sauvegarde réussie:", result);
-
       return true;
     } catch (error) {
-      console.error("❌ Erreur sauvegarde:", error);
-      this.showToast("❌ Erreur sauvegarde: " + error.message, "danger");
+      this.showToast('❌ Erreur sauvegarde: ' + error.message, 'danger');
       return false;
     }
   }
@@ -461,21 +362,30 @@ class RestaurantApp {
       if (success) {
         console.log("✅ Sauvegarde automatique réussie");
         this.updateSyncStatus("✅ Sauvegardé");
+        this.setSyncWarning(false);
 
-        // Remettre le statut normal après 2 secondes
         setTimeout(() => {
           this.updateSyncStatus();
         }, 2000);
+      } else {
+        throw new Error("Échec de la sauvegarde");
       }
     } catch (error) {
       console.error("❌ Erreur sauvegarde automatique:", error);
-      this.updateSyncStatus("❌ Erreur");
+      this.updateSyncStatus("⚠️ Non synchronisé");
+      this.setSyncWarning(true);
+      this.showToast(
+        "❌ Sauvegarde échouée — vos modifications ne sont pas enregistrées. Vérifiez votre connexion puis relancez via « Actualiser ».",
+        "danger"
+      );
 
       setTimeout(() => {
         this.updateSyncStatus();
-      }, 3000);
+      }, 5000);
     }
   }
+
+  setSyncWarning(active) { window.UI.setSyncWarning(document.getElementById('status-badge'), active); }
 
   /* ===== CONFIGURATION UI ===== */
   setupUI() {
@@ -485,6 +395,9 @@ class RestaurantApp {
     this.updateSyncStatus();
 
     this.setupEventListeners();
+    // Branchés UNE SEULE FOIS (délégation) — jamais lors des re-render
+    this.setupFilterEvents();
+    this.setupCuisineAutocomplete();
   }
 
   setupEventListeners() {
@@ -571,7 +484,7 @@ if (faqBtn) {
       const mapTab = document.getElementById("map-tab");
       if (mapTab) {
         mapTab.addEventListener("shown.bs.tab", () => {
-          setTimeout(() => this.initMap(), 100);
+          this.initMap();
         });
       }
 
@@ -608,25 +521,18 @@ if (nearbyBtn) {
 
   /* ===== MISE À JOUR DU STATUT ===== */
   updateSyncStatus(customStatus = null) {
-    const statusBadge = document.getElementById("status-badge");
-    if (statusBadge && !this.githubAuth.isAuthenticated) {
-      if (customStatus) {
-        statusBadge.className = "badge bg-warning fs-6";
-        statusBadge.textContent = customStatus;
-      } else {
-        statusBadge.className = "badge bg-info fs-6";
-        statusBadge.textContent = "⚡ Neon DB";
-      }
-    }
+    window.UI.updateSyncStatus(
+      document.getElementById('status-badge'),
+      customStatus,
+      this.githubAuth.isAuthenticated
+    );
   }
 
   /* ===== RENDU ===== */
-  // ✅ CORRECTION 1 : Supprimer l'appel à loadFiltersState
   render() {
     this.renderStats();
-    
-    // Initialiser les filtres puis appliquer
-    this.setupFilters();
+    // Regénérer les options de filtres (les listeners, eux, sont branchés une fois dans setupUI)
+    this.populateFilterOptions();
     this.applyFilters();
   }
 
@@ -673,7 +579,7 @@ if (nearbyBtn) {
   /* ===== CRÉATION DES CARDS ===== */
   createTestedCard(restaurant) {
     const rating = this.calculateRating(restaurant.ratings, restaurant.winesNotTested);
-    const photo = restaurant.photo || restaurant.photos?.[0]?.url || 
+    const photo = restaurant.photo || restaurant.photos?.[0]?.url ||
         "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=250&fit=crop";
 
     const editButtons = this.isEditMode ? `
@@ -689,14 +595,14 @@ if (nearbyBtn) {
     const photoGallery = restaurant.photos && restaurant.photos.length > 0 ? `
         <div class="photo-gallery">
             ${restaurant.photos.map((photo, index) => `
-                <div class="photo-item" onclick="app.openLightbox(${restaurant.id}, ${index})">
-                    <img src="${photo.url}" alt="Photo ${index + 1}" onerror="this.src='https://via.placeholder.com/120?text=Error'">
-                </div>
+                <button type="button" class="photo-item" onclick="app.openLightbox(${restaurant.id}, ${index})" aria-label="Voir photo ${index + 1}">
+                    <img src="${escapeHtml(photo.url)}" alt="Photo ${index + 1}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src=window.FALLBACK_IMG">
+                </button>
             `).join('')}
         </div>
     ` : `
         <div class="empty-gallery">
-            <i class="bi bi-camera"></i>
+            <i class="bi bi-camera" aria-hidden="true"></i>
             <p class="mb-0">Aucune photo ajoutée</p>
         </div>
     `;
@@ -704,20 +610,20 @@ if (nearbyBtn) {
     return `
         <div class="col-md-6 mb-4">
             <div class="card restaurant-card h-100">
-                <img src="${photo}" class="card-img-top" alt="${restaurant.name}" 
-                     style="cursor: pointer;" 
-                     onclick="window.open('${restaurant.googleMapsUrl}', '_blank')" 
+                <img src="${escapeHtml(photo)}" class="card-img-top" alt="${escapeHtml(restaurant.name)}"
+                     style="cursor: pointer;" loading="lazy" decoding="async"
+                     onclick="window.open('${escapeHtml(restaurant.googleMapsUrl)}', '_blank')"
                      title="Cliquer pour ouvrir dans Google Maps">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h5 class="card-title">${restaurant.name}</h5>
-                        <span class="badge bg-primary">${restaurant.type}</span>
+                        <h3 class="card-title h5">${escapeHtml(restaurant.name)}</h3>
+                        <span class="badge bg-primary">${escapeHtml(restaurant.type)}</span>
                     </div>
                     <p class="card-text text-muted">
-                        <i class="bi bi-geo-alt"></i> ${restaurant.address || restaurant.location}
-                        <span class="ms-2">${restaurant.priceRange || "€€"}</span>
+                        <i class="bi bi-geo-alt" aria-hidden="true"></i> ${escapeHtml(restaurant.address || restaurant.location)}
+                        <span class="ms-2">${escapeHtml(restaurant.priceRange || "€€")}</span>
                     </p>
-                    
+
                     ${photoGallery}
 
                     <div class="final-rating" id="final-rating-${restaurant.id}">
@@ -730,19 +636,19 @@ if (nearbyBtn) {
                         <div class="rating-detailed" style="display: none;">
                             <div class="final-rating-compact">
                                 <div class="rating-item">
-                                    <span class="icon">🍽️</span>
+                                    <span class="icon" aria-hidden="true">🍽️</span>
                                     <span class="value">${restaurant.ratings.plats.toFixed(1)}</span>
                                 </div>
-                                ${restaurant.winesNotTested ? 
-                                    '<div class="rating-item"><span class="icon">🍷</span><span class="value text-muted">N/A</span></div>' :
-                                    `<div class="rating-item"><span class="icon">🍷</span><span class="value">${restaurant.ratings.vins.toFixed(1)}</span></div>`
+                                ${restaurant.winesNotTested ?
+                                    '<div class="rating-item"><span class="icon" aria-hidden="true">🍷</span><span class="value text-muted">N/A</span></div>' :
+                                    `<div class="rating-item"><span class="icon" aria-hidden="true">🍷</span><span class="value">${restaurant.ratings.vins.toFixed(1)}</span></div>`
                                 }
                                 <div class="rating-item">
-                                    <span class="icon">😊</span>
+                                    <span class="icon" aria-hidden="true">😊</span>
                                     <span class="value">${restaurant.ratings.accueil.toFixed(1)}</span>
                                 </div>
                                 <div class="rating-item">
-                                    <span class="icon">🏛️</span>
+                                    <span class="icon" aria-hidden="true">🏛️</span>
                                     <span class="value">${restaurant.ratings.lieu.toFixed(1)}</span>
                                 </div>
                             </div>
@@ -752,13 +658,13 @@ if (nearbyBtn) {
                         </div>
                     </div>
 
-                    ${restaurant.comment ? `<blockquote class="blockquote-footer mt-3">"${restaurant.comment}"</blockquote>` : ""}
+                    ${restaurant.comment ? `<blockquote class="blockquote-footer mt-3">"${escapeHtml(restaurant.comment)}"</blockquote>` : ""}
 
                     <div class="action-buttons">
                         ${editButtons}
                         ${restaurant.coordinates ? `
                         <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
-                            <i class="bi bi-geo-alt"></i> Carte
+                            <i class="bi bi-geo-alt" aria-hidden="true"></i> Carte
                         </button>
                         ` : ""}
                     </div>
@@ -769,58 +675,58 @@ if (nearbyBtn) {
 }
 
   createWishlistCard(restaurant) {
-    const photo = restaurant.photo || restaurant.photos?.[0] || 
+    const photo = restaurant.photo || restaurant.photos?.[0] ||
         "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=250&fit=crop";
 
     const editButtons = this.isEditMode ? `
         <button class="btn btn-success btn-action" onclick="app.moveToTested(${restaurant.id})">
-            <i class="bi bi-arrow-right"></i> Testé !
+            <i class="bi bi-arrow-right" aria-hidden="true"></i> Testé !
         </button>
         <button class="btn btn-outline-primary btn-action" onclick="app.editRestaurant(${restaurant.id}, 'wishlist')">
-            <i class="bi bi-pencil"></i> Modifier
+            <i class="bi bi-pencil" aria-hidden="true"></i> Modifier
         </button>
         <button class="btn btn-outline-danger btn-action" onclick="app.deleteRestaurant(${restaurant.id}, 'wishlist')">
-            <i class="bi bi-trash"></i> Supprimer
+            <i class="bi bi-trash" aria-hidden="true"></i> Supprimer
         </button>
     ` : `
         <button class="btn btn-outline-secondary btn-action" disabled>
-            <i class="bi bi-lock"></i> Mode lecture
+            <i class="bi bi-lock" aria-hidden="true"></i> Mode lecture
         </button>
     `;
 
     // Conteneur cliquable si Google Maps URL disponible
-    const cardClickableStart = restaurant.googleMapsUrl ? 
-        `<div class="card restaurant-card wishlist-card h-100" style="cursor: pointer;" onclick="window.open('${restaurant.googleMapsUrl}', '_blank')" title="Cliquer pour ouvrir dans Google Maps">` : 
+    const cardClickableStart = restaurant.googleMapsUrl ?
+        `<div class="card restaurant-card wishlist-card h-100" style="cursor: pointer;" onclick="window.open('${escapeHtml(restaurant.googleMapsUrl)}', '_blank')" title="Cliquer pour ouvrir dans Google Maps">` :
         `<div class="card restaurant-card wishlist-card h-100">`;
 
     return `
         <div class="col-md-6 mb-4">
             ${cardClickableStart}
-                <img src="${photo}" class="card-img-top" alt="${restaurant.name}">
+                <img src="${escapeHtml(photo)}" class="card-img-top" alt="${escapeHtml(restaurant.name)}" loading="lazy" decoding="async">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h5 class="card-title">${restaurant.name}</h5>
-                        <span class="badge bg-success">${restaurant.type}</span>
+                        <h3 class="card-title h5">${escapeHtml(restaurant.name)}</h3>
+                        <span class="badge bg-success">${escapeHtml(restaurant.type)}</span>
                     </div>
                     <p class="card-text text-muted">
-                        <i class="bi bi-geo-alt"></i> ${restaurant.address || restaurant.location}
-                        <span class="ms-2">${restaurant.priceRange || "€€"}</span>
+                        <i class="bi bi-geo-alt" aria-hidden="true"></i> ${escapeHtml(restaurant.address || restaurant.location)}
+                        <span class="ms-2">${escapeHtml(restaurant.priceRange || "€€")}</span>
                     </p>
-                    
+
                     ${restaurant.reason ? `
                     <div class="alert alert-success">
-                        <strong>💡 Pourquoi :</strong><br>
-                        ${restaurant.reason}
+                        <strong><span aria-hidden="true">💡</span> Pourquoi :</strong><br>
+                        ${escapeHtml(restaurant.reason)}
                     </div>
                     ` : ""}
 
-                    ${restaurant.comment ? `<p class="text-muted"><em>"${restaurant.comment}"</em></p>` : ""}
+                    ${restaurant.comment ? `<p class="text-muted"><em>"${escapeHtml(restaurant.comment)}"</em></p>` : ""}
 
                     <div class="action-buttons" onclick="event.stopPropagation();">
                         ${editButtons}
                         ${restaurant.coordinates ? `
                         <button class="btn btn-outline-info btn-action" onclick="app.showOnMap(${restaurant.coordinates.lat}, ${restaurant.coordinates.lng})">
-                            <i class="bi bi-geo-alt"></i> Carte
+                            <i class="bi bi-geo-alt" aria-hidden="true"></i> Carte
                         </button>
                         ` : ""}
                     </div>
@@ -946,11 +852,8 @@ this.renderPhotoInputs();
 
     modal.show();
 
-    // Setup après ouverture du modal
-    setTimeout(() => {
-      this.updateCuisineDropdown();
-      this.setupCuisineAutocomplete();
-    }, 200);
+    // Options d'autocomplete à jour (les listeners sont branchés une fois dans setupUI)
+    this.updateCuisineDropdown();
   }
 
   addPhotoInput() {
@@ -977,23 +880,23 @@ renderPhotoInputs() {
         <div class="photo-input-group">
             <div class="row align-items-center">
                 <div class="col-md-2">
-                    ${photo.url ? `<img src="${photo.url}" class="photo-preview" onerror="this.src='https://via.placeholder.com/100?text=Error'">` : 
+                    ${photo.url ? `<img src="${escapeHtml(photo.url)}" class="photo-preview" onerror="this.onerror=null;this.src=window.FALLBACK_IMG">` :
                     `<div class="photo-preview d-flex align-items-center justify-content-center bg-light">
-                        <i class="bi bi-image text-muted"></i>
+                        <i class="bi bi-image text-muted" aria-hidden="true"></i>
                     </div>`}
                 </div>
                 <div class="col-md-10">
                     <div class="mb-2">
                         <label class="form-label small mb-1">URL de la photo</label>
-                        <input type="url" class="form-control form-control-sm" 
-                               value="${photo.url}" 
+                        <input type="url" class="form-control form-control-sm"
+                               value="${escapeHtml(photo.url)}"
                                onchange="app.updatePhotoUrl(${index}, this.value)"
                                placeholder="https://i.imgur.com/...">
                     </div>
                     <div class="mb-2">
                         <label class="form-label small mb-1">Commentaire (optionnel)</label>
-                        <input type="text" class="form-control form-control-sm" 
-                               value="${photo.comment}" 
+                        <input type="text" class="form-control form-control-sm"
+                               value="${escapeHtml(photo.comment)}"
                                onchange="app.updatePhotoComment(${index}, this.value)"
                                placeholder="Description de la photo">
                     </div>
@@ -1231,11 +1134,8 @@ if (address && address.trim() !== '') {
     );
     modal.show();
 
-    // Setup après ouverture du modal
-    setTimeout(() => {
-      this.updateCuisineDropdown();
-      this.setupCuisineAutocomplete();
-    }, 200);
+    // Options d'autocomplete à jour (les listeners sont branchés une fois dans setupUI)
+    this.updateCuisineDropdown();
   }
 
   async deleteRestaurant(id, type) {
@@ -1646,250 +1546,25 @@ async confirmDelete() {
     return normalizedValue;
   }
 
-  /* ===== CARTE ===== */
+  /* ===== CARTE — délégué à MapManager (map.js) ===== */
   showOnMap(lat, lng) {
-    // Activer l'onglet carte
-    const mapTab = document.getElementById("map-tab");
-    if (mapTab) {
-      mapTab.click();
-    }
-
-    // Attendre que la carte soit initialisée et centrer sur le point
-    setTimeout(() => {
-      if (!this.map) {
-        this.initMap();
-      }
-      if (this.map) {
-        this.map.setView([lat, lng], 16);
-      }
-    }, 100);
+    document.getElementById('map-tab')?.click();
+    this.initMap().then(() => {
+      if (this.mapManager.map) this.mapManager.map.setView([lat, lng], 16);
+    });
   }
 
-  // ✅ CORRECTION 3 : Amélioration de la géolocalisation avec messages d'erreur explicites
   activateGeolocation() {
-    if (!navigator.geolocation) {
-        this.showToast("❌ Géolocalisation non supportée par votre navigateur", "danger");
-        return;
-    }
+    this.mapManager.activateGeolocation(this.filteredData);
+  }
 
-    this.showToast("📍 Localisation en cours...", "info");
+  async initMap() {
+    await this.mapManager.init(this.filteredData);
+  }
 
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
-
-            this.userPosition = { lat, lng };
-
-            // Initialiser la carte si nécessaire
-            if (!this.map) {
-                this.initMap();
-            }
-
-            // Supprimer l'ancien marqueur utilisateur s'il existe
-            if (this.userMarker) {
-                this.map.removeLayer(this.userMarker);
-            }
-
-            // Ajouter le marqueur utilisateur
-            this.userMarker = L.marker([lat, lng], {
-                icon: L.icon({
-                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    popupAnchor: [1, -34],
-                    shadowSize: [41, 41]
-                })
-            }).addTo(this.map);
-
-            this.userMarker.bindPopup(`
-                <div style="min-width: 150px; text-align: center;">
-                    <strong>📍 Vous êtes ici</strong>
-                </div>
-            `);
-
-            // Centrer la carte sur l'utilisateur
-            this.map.setView([lat, lng], 14);
-
-            // Mettre à jour les popups avec les distances
-            this.updateMapMarkersWithDistance();
-
-            this.showToast("✅ Position trouvée !", "success");
-        },
-        (error) => {
-            console.error("Erreur géolocalisation:", error);
-            
-            let message = "❌ Impossible d'obtenir votre position";
-            
-            switch(error.code) {
-                case 1: // PERMISSION_DENIED
-                    message = "❌ Veuillez autoriser l'accès à votre position dans les paramètres du navigateur";
-                    break;
-                case 2: // POSITION_UNAVAILABLE
-                    message = "❌ Position indisponible - vérifiez que le GPS/WiFi est activé";
-                    break;
-                case 3: // TIMEOUT
-                    message = "❌ Délai dépassé pour obtenir votre position";
-                    break;
-            }
-            
-            this.showToast(message, "danger");
-        },
-        {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        }
-    );
-}
-
-calculateDistance(lat1, lon1, lat2, lon2) {
-    // Formule de Haversine pour calculer la distance entre deux points GPS
-    const R = 6371; // Rayon de la Terre en km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distance = R * c;
-    
-    // Retourner en km si > 1km, sinon en mètres
-    if (distance >= 1) {
-        return distance.toFixed(1) + ' km';
-    } else {
-        return (distance * 1000).toFixed(0) + ' m';
-    }
-}
-
-  initMap() {
-    if (this.map) {
-        // Carte déjà initialisée, juste mettre à jour les marqueurs
-        this.updateMapMarkers();
-        return;
-    }
-
-    this.map = L.map("map").setView([48.8566, 2.3522], 12);
-
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors",
-    }).addTo(this.map);
-
-    // Créer les marqueurs initiaux
-    this.updateMapMarkers();
-}
-
-updateMapMarkers() {
-    // Supprimer tous les marqueurs existants
-    this.restaurantMarkers.forEach(marker => {
-        this.map.removeLayer(marker);
-    });
-    this.restaurantMarkers = [];
-
-    // Obtenir les données filtrées actuelles
-    const currentTab = this.getCurrentTab();
-    const dataToShow = [...this.filteredData.tested, ...this.filteredData.wishlist];
-
-    // Ajouter les marqueurs pour les restaurants testés (BLEUS)
-    this.filteredData.tested.forEach((restaurant) => {
-        if (restaurant.coordinates) {
-            const rating = this.calculateRating(restaurant.ratings, restaurant.winesNotTested);
-            const distance = this.userPosition ? 
-                this.calculateDistance(
-                    this.userPosition.lat, 
-                    this.userPosition.lng,
-                    restaurant.coordinates.lat,
-                    restaurant.coordinates.lng
-                ) : null;
-
-            const marker = L.marker([
-                restaurant.coordinates.lat,
-                restaurant.coordinates.lng,
-            ], {
-                icon: L.icon({
-                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    popupAnchor: [1, -34],
-                    shadowSize: [41, 41]
-                })
-            }).addTo(this.map);
-
-            marker.bindPopup(`
-                <div style="min-width: 250px;">
-                    <h6><strong>${restaurant.name}</strong></h6>
-                    <p class="mb-1"><span class="badge bg-primary">${restaurant.type}</span></p>
-                    <p class="mb-2">${restaurant.location}</p>
-                    ${distance ? `<p class="mb-2"><i class="bi bi-pin-map"></i> <strong>${distance}</strong></p>` : ''}
-                    <div class="mb-2">${this.generateStars(rating)} ${rating.toFixed(1)}/5</div>
-                    ${restaurant.comment ? `<p class="small mt-2"><em>"${restaurant.comment}"</em></p>` : ""}
-                    ${restaurant.googleMapsUrl ? `
-                        <a href="${restaurant.googleMapsUrl}" target="_blank" class="btn btn-sm btn-primary text-white w-100 mt-2">
-                            <i class="bi bi-geo-alt-fill"></i> Ouvrir dans Google Maps
-                        </a>
-                    ` : ''}
-                </div>
-            `);
-
-            this.restaurantMarkers.push(marker);
-        }
-    });
-
-    // Ajouter les marqueurs pour la wishlist (VERTS)
-    this.filteredData.wishlist.forEach((restaurant) => {
-        if (restaurant.coordinates) {
-            const distance = this.userPosition ? 
-                this.calculateDistance(
-                    this.userPosition.lat, 
-                    this.userPosition.lng,
-                    restaurant.coordinates.lat,
-                    restaurant.coordinates.lng
-                ) : null;
-
-            const marker = L.marker([
-                restaurant.coordinates.lat,
-                restaurant.coordinates.lng,
-            ], {
-                icon: L.icon({
-                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    popupAnchor: [1, -34],
-                    shadowSize: [41, 41]
-                })
-            }).addTo(this.map);
-
-            marker.bindPopup(`
-                <div style="min-width: 250px;">
-                    <h6><strong>${restaurant.name}</strong></h6>
-                    <p class="mb-1"><span class="badge bg-success">${restaurant.type}</span></p>
-                    <p class="mb-2">${restaurant.location}</p>
-                    ${distance ? `<p class="mb-2"><i class="bi bi-pin-map"></i> <strong>${distance}</strong></p>` : ''}
-                    <div class="alert alert-info mb-2 py-2">
-                        ❤️ <strong>À tester</strong><br>
-                        ${restaurant.reason ? `<small>${restaurant.reason}</small>` : ""}
-                    </div>
-                    ${restaurant.googleMapsUrl ? `
-                        <a href="${restaurant.googleMapsUrl}" target="_blank" class="btn btn-sm btn-success text-white w-100 mt-2">
-                            <i class="bi bi-geo-alt-fill"></i> Ouvrir dans Google Maps
-                        </a>
-                    ` : ''}
-                </div>
-            `);
-
-            this.restaurantMarkers.push(marker);
-        }
-    });
-}
-
-updateMapMarkersWithDistance() {
-    // Recréer tous les marqueurs avec les distances mises à jour
-    this.updateMapMarkers();
-}
+  updateMapMarkers() {
+    this.mapManager.updateMarkers(this.filteredData);
+  }
 
   /* ===== UTILITAIRES ===== */
   calculateRating(ratings, winesNotTested = false) {
@@ -1911,147 +1586,58 @@ updateMapMarkersWithDistance() {
   }
 
   async geocodeAddress(address) {
-  if (!address || address.trim() === '') {
-    return null;
+    return window.Api.geocodeAddress(address);
   }
 
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
-    
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'MonCarnetGastro/1.0'
-      }
-    });
+  generateStars(rating) { return window.UI.generateStars(rating); }
 
-    if (!response.ok) {
-      throw new Error('Erreur géocodage');
-    }
-
-    const data = await response.json();
-
-    if (data && data.length > 0) {
-      return {
-        lat: parseFloat(data[0].lat),
-        lng: parseFloat(data[0].lon)
-      };
-    }
-
-    return null;
-  } catch (error) {
-    console.error('❌ Erreur géocodage:', error);
-    return null;
-  }
-}
-
-  generateStars(rating) {
-    let stars = "";
-    for (let i = 1; i <= 5; i++) {
-      if (i <= rating) {
-        stars += '<i class="bi bi-star-fill"></i>';
-      } else if (i - 0.5 <= rating) {
-        stars += '<i class="bi bi-star-half"></i>';
-      } else {
-        stars += '<i class="bi bi-star"></i>';
-      }
-    }
-    return stars;
-  }
-
-  showToast(message, type = "info") {
-    try {
-      console.log(`📢 Toast: ${message}`);
-
-      // Toast simple
-      const toast = document.createElement("div");
-      toast.className = `alert alert-${type} position-fixed`;
-      toast.style.cssText =
-        "top: 20px; right: 20px; z-index: 9999; min-width: 300px; opacity: 0.9;";
-      toast.textContent = message;
-
-      document.body.appendChild(toast);
-
-      setTimeout(() => {
-        if (toast.parentNode) {
-          toast.remove();
-        }
-      }, 3000);
-    } catch (error) {
-      console.warn("⚠️ Erreur toast, fallback alert:", error);
-      alert(message);
-    }
-  }
+  showToast(message, type = 'info') { window.UI.showToast(message, type); }
 
   /* ===== NOUVELLES MÉTHODES POUR LES FILTRES ===== */
 
-setupFilters() {
-    console.log('🔧 Configuration des filtres...');
-    
-    this.populateFilterOptions();
-    this.setupFilterEvents();
-    this.applyFilters();
-}
-
 populateFilterOptions() {
-    console.log('📋 Début populateFilterOptions...');
-    
     // Récupérer toutes les cuisines et localisations uniques
     const allCuisines = new Set();
     const allLocations = new Set();
-    
+
     [...this.data.tested, ...this.data.wishlist].forEach(restaurant => {
         allCuisines.add(restaurant.type);
         allLocations.add(restaurant.location);
     });
-    
-    console.log('🍽️ Cuisines trouvées:', Array.from(allCuisines));
-    console.log('📍 Localisations trouvées:', Array.from(allLocations));
-    
-    // Populer le dropdown cuisine
+
+    // Populer le dropdown cuisine (état coché restauré depuis this.filters)
     const cuisineMenu = document.getElementById('cuisine-dropdown-menu');
-    console.log('🔍 Element cuisine-dropdown-menu:', cuisineMenu);
-    
     if (cuisineMenu) {
-        const html = Array.from(allCuisines).sort().map(cuisine => {
+        cuisineMenu.innerHTML = Array.from(allCuisines).sort().map(cuisine => {
             const cuisineData = this.data.cuisineTypes.find(c => c.value === cuisine);
             const emoji = cuisineData ? cuisineData.emoji : '🍽️';
+            const active = this.filters.cuisines.includes(cuisine);
             return `
                 <li>
-                    <a class="dropdown-item" href="#" data-value="${cuisine}">
-                        <input type="checkbox" class="form-check-input me-2" value="${cuisine}">
-                        <span>${emoji} ${cuisine}</span>
+                    <a class="dropdown-item${active ? ' active' : ''}" href="#" data-value="${escapeHtml(cuisine)}">
+                        <input type="checkbox" class="form-check-input me-2" value="${escapeHtml(cuisine)}"${active ? ' checked' : ''}>
+                        <span>${escapeHtml(emoji)} ${escapeHtml(cuisine)}</span>
                     </a>
                 </li>
             `;
         }).join('');
-        
-        console.log('✅ HTML généré pour cuisines:', html.length, 'caractères');
-        cuisineMenu.innerHTML = html;
-    } else {
-        console.error('❌ Element cuisine-dropdown-menu NON TROUVÉ !');
     }
-    
-    // Populer le dropdown localisation
+
+    // Populer le dropdown localisation (état coché restauré depuis this.filters)
     const locationMenu = document.getElementById('location-dropdown-menu');
-    console.log('🔍 Element location-dropdown-menu:', locationMenu);
-    
     if (locationMenu) {
-        const html = Array.from(allLocations).sort().map(location => `
-            <li>
-                <a class="dropdown-item" href="#" data-value="${location}">
-                    <input type="checkbox" class="form-check-input me-2" value="${location}">
-                    <span>📍 ${location}</span>
-                </a>
-            </li>
-        `).join('');
-        
-        console.log('✅ HTML généré pour locations:', html.length, 'caractères');
-        locationMenu.innerHTML = html;
-    } else {
-        console.error('❌ Element location-dropdown-menu NON TROUVÉ !');
+        locationMenu.innerHTML = Array.from(allLocations).sort().map(location => {
+            const active = this.filters.locations.includes(location);
+            return `
+                <li>
+                    <a class="dropdown-item${active ? ' active' : ''}" href="#" data-value="${escapeHtml(location)}">
+                        <input type="checkbox" class="form-check-input me-2" value="${escapeHtml(location)}"${active ? ' checked' : ''}>
+                        <span>📍 ${escapeHtml(location)}</span>
+                    </a>
+                </li>
+            `;
+        }).join('');
     }
-    
-    console.log('✅ Fin populateFilterOptions');
 }
 
 setupFilterEvents() {
@@ -2078,11 +1664,9 @@ if (cuisineMenu) {
             
             // Mettre à jour les filtres
             if (checkbox.checked) {
-                if (!this.filters.cuisines.includes(value)) {
-                    this.filters.cuisines.push(value);
-                }
+                this.filters.cuisines = window.Filters.addFilter(this.filters.cuisines, value);
             } else {
-                this.filters.cuisines = this.filters.cuisines.filter(c => c !== value);
+                this.filters.cuisines = window.Filters.removeFilter(this.filters.cuisines, value);
             }
             
             this.updateCuisineBadges();
@@ -2118,11 +1702,9 @@ if (locationMenu) {
             
             // Mettre à jour les filtres
             if (checkbox.checked) {
-                if (!this.filters.locations.includes(value)) {
-                    this.filters.locations.push(value);
-                }
+                this.filters.locations = window.Filters.addFilter(this.filters.locations, value);
             } else {
-                this.filters.locations = this.filters.locations.filter(l => l !== value);
+                this.filters.locations = window.Filters.removeFilter(this.filters.locations, value);
             }
             
             this.updateLocationBadges();
@@ -2146,11 +1728,9 @@ if (locationMenu) {
             checkbox.classList.toggle('active', input.checked);
             
             if (input.checked) {
-                if (!this.filters.prices.includes(priceValue)) {
-                    this.filters.prices.push(priceValue);
-                }
+                this.filters.prices = window.Filters.addFilter(this.filters.prices, priceValue);
             } else {
-                this.filters.prices = this.filters.prices.filter(p => p !== priceValue);
+                this.filters.prices = window.Filters.removeFilter(this.filters.prices, priceValue);
             }
             
             this.applyFilters();
@@ -2187,32 +1767,17 @@ updateDropdownButtonText(btnId, count, label) {
 
 applyFilters() {
     const currentTab = this.getCurrentTab();
-    
-    // Filtrer LES DEUX listes (tested ET wishlist) pour la carte
+
+    // Déléguer le filtrage pur à filters.js
     ['tested', 'wishlist'].forEach(type => {
-        const sourceData = this.data[type];
-        
-        let filtered = sourceData.filter(restaurant => {
-            const cuisineMatch = this.filters.cuisines.length === 0 || 
-                                this.filters.cuisines.includes(restaurant.type);
-            
-            const priceMatch = this.filters.prices.length === 0 || 
-                              this.filters.prices.includes(restaurant.priceRange || '€€');
-            
-            const locationMatch = this.filters.locations.length === 0 || 
-                                  this.filters.locations.includes(restaurant.location);
-            
-            return cuisineMatch && priceMatch && locationMatch;
-        });
-        
-        this.filteredData[type] = filtered;
+        this.filteredData[type] = window.Filters.applyFilters(this.data[type], this.filters);
     });
     
     // Mettre à jour l'affichage de l'onglet actuel
     this.renderFiltered(currentTab);
     this.updateResultsCount(this.filteredData[currentTab].length);
     this.updateClearButton();
-    if (this.map) {
+    if (this.mapManager.map) {
         this.updateMapMarkers();
     }
 }
@@ -2220,14 +1785,59 @@ applyFilters() {
 renderFiltered(type) {
     const container = document.getElementById(type === 'tested' ? 'tested-grid' : 'wishlist-grid');
     const data = this.filteredData[type];
-    
+
     if (data.length === 0) {
         container.innerHTML = this.createFilteredEmptyState(type);
-    } else {
-        container.innerHTML = data
-            .map(r => type === 'tested' ? this.createTestedCard(r) : this.createWishlistCard(r))
-            .join('');
+        return;
     }
+
+    // Rendu incrémental : ne remplacer que les cards qui ont changé
+    const createCard = r => type === 'tested' ? this.createTestedCard(r) : this.createWishlistCard(r);
+
+    // Index des nodes existants par restaurant ID
+    const existingNodes = {};
+    container.querySelectorAll('[data-restaurant-id]').forEach(node => {
+        existingNodes[node.dataset.restaurantId] = node;
+    });
+
+    const newIds = new Set(data.map(r => String(r.id)));
+
+    // Supprimer les nodes qui ne sont plus dans les données filtrées
+    Object.keys(existingNodes).forEach(id => {
+        if (!newIds.has(id)) existingNodes[id].remove();
+    });
+
+    // Si aucun node existant ne porte data-restaurant-id (premier rendu ou skeleton), régénérer entier
+    if (Object.keys(existingNodes).length === 0) {
+        const fragment = document.createDocumentFragment();
+        data.forEach(r => {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = createCard(r);
+            const node = tmp.firstElementChild;
+            node.dataset.restaurantId = r.id;
+            fragment.appendChild(node);
+        });
+        container.innerHTML = '';
+        container.appendChild(fragment);
+        return;
+    }
+
+    // Mise à jour / insertion dans l'ordre
+    data.forEach((r, i) => {
+        const id = String(r.id);
+        const tmp = document.createElement('div');
+        tmp.innerHTML = createCard(r);
+        const newNode = tmp.firstElementChild;
+        newNode.dataset.restaurantId = r.id;
+
+        const currentAtPos = container.children[i];
+        if (!currentAtPos) {
+            container.appendChild(newNode);
+        } else if (currentAtPos.dataset.restaurantId !== id) {
+            container.insertBefore(newNode, currentAtPos);
+        }
+        // Si même ID à la même position, on garde l'existant (pas de re-render)
+    });
 }
 
 createFilteredEmptyState(type) {
@@ -2253,16 +1863,16 @@ createFilteredEmptyState(type) {
 updateCuisineBadges() {
     const container = document.getElementById('cuisine-badges');
     if (!container) return;
-    
+
     container.innerHTML = this.filters.cuisines.map(cuisine => {
         const cuisineData = this.data.cuisineTypes.find(c => c.value === cuisine);
-        const emoji = cuisineData ? cuisineData.emoji : '🍽️';
-        
+        const emoji = cuisineData ? escapeHtml(cuisineData.emoji) : '🍽️';
+
         return `
-            <span class="cuisine-badge" onclick="app.removeCuisineFilter('${cuisine}')">
-                ${emoji} ${cuisine}
-                <span class="remove">×</span>
-            </span>
+            <button type="button" class="cuisine-badge" onclick="app.removeCuisineFilter('${escapeHtml(cuisine)}')" aria-label="Retirer le filtre ${escapeHtml(cuisine)}">
+                ${emoji} ${escapeHtml(cuisine)}
+                <span aria-hidden="true">×</span>
+            </button>
         `;
     }).join('');
 }
@@ -2270,18 +1880,17 @@ updateCuisineBadges() {
 updateLocationBadges() {
     const container = document.getElementById('location-badges');
     if (!container) return;
-    
+
     container.innerHTML = this.filters.locations.map(location => `
-        <span class="cuisine-badge" onclick="app.removeLocationFilter('${location}')">
-            📍 ${location}
-            <span class="remove">×</span>
-        </span>
+        <button type="button" class="cuisine-badge" onclick="app.removeLocationFilter('${escapeHtml(location)}')" aria-label="Retirer le filtre ${escapeHtml(location)}">
+            <span aria-hidden="true">📍</span> ${escapeHtml(location)}
+            <span aria-hidden="true">×</span>
+        </button>
     `).join('');
 }
 
 removeCuisineFilter(cuisine) {
-    // Retirer du tableau
-    this.filters.cuisines = this.filters.cuisines.filter(c => c !== cuisine);
+    this.filters.cuisines = window.Filters.removeFilter(this.filters.cuisines, cuisine);
     
     // Décocher dans le dropdown
     const cuisineMenu = document.getElementById("cuisine-dropdown-menu");
@@ -2303,8 +1912,7 @@ removeCuisineFilter(cuisine) {
 }
 
 removeLocationFilter(location) {
-    // Retirer du tableau
-    this.filters.locations = this.filters.locations.filter(l => l !== location);
+    this.filters.locations = window.Filters.removeFilter(this.filters.locations, location);
     
     // Décocher dans le dropdown
     const locationMenu = document.getElementById("location-dropdown-menu");
@@ -2331,15 +1939,41 @@ getCurrentTab() {
 }
 
 hasActiveFilters() {
-    return this.filters.cuisines.length > 0 || 
-           this.filters.prices.length > 0 || 
-           this.filters.locations.length > 0;
+    return window.Filters.hasActiveFilters(this.filters);
 }
 
 updateResultsCount(count) {
     const counter = document.getElementById('results-count');
     if (counter) {
         counter.textContent = `${count} restaurant${count !== 1 ? 's' : ''}`;
+    }
+    this.updateTabBadges();
+}
+
+updateTabBadges() {
+    const hasFilters = this.hasActiveFilters();
+    const testedCount = this.filteredData.tested.length;
+    const wishlistCount = this.filteredData.wishlist.length;
+
+    this.setTabBadge('tested-tab', testedCount, hasFilters);
+    this.setTabBadge('wishlist-tab', wishlistCount, hasFilters);
+}
+
+setTabBadge(tabId, count, hasFilters) {
+    const tab = document.getElementById(tabId);
+    if (!tab) return;
+
+    let badge = tab.querySelector('.tab-filter-badge');
+    if (hasFilters) {
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'tab-filter-badge badge bg-warning text-dark ms-1';
+            tab.appendChild(badge);
+        }
+        badge.textContent = count;
+        badge.setAttribute('aria-label', `${count} résultat${count !== 1 ? 's' : ''} avec filtres actifs`);
+    } else if (badge) {
+        badge.remove();
     }
 }
 
@@ -2491,47 +2125,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   console.log("🚀 Démarrage de l'application Netlify...");
 
   app = new RestaurantApp();
+  // Exposé pour les handlers inline (onclick="app.…") — script.js est un module,
+  // ses déclarations ne sont plus globales par défaut.
+  window.app = app;
   await app.init();
 
-  console.log("✅ Application Netlify prête !");
-});
-
-/* ===== FONCTIONS GLOBALES ===== */
-function saveRestaurant() {
-  if (app) app.saveRestaurant();
-}
-
-function selectCuisine(cuisine) {
-  if (app) app.selectCuisine(cuisine);
-}
-
-function confirmTransfer() {
-  if (app) app.confirmTransfer();
-}
-
-function githubLogin() {
-  if (app) app.githubLogin();
-}
-
-function githubLogout() {
-  if (app) app.githubLogout();
-}
-
-function confirmDelete() {
-    if (app) app.confirmDelete();
-}
-
-// Nouvelles fonctions globales pour les filtres
-function removeCuisineFilter(cuisine) {
-    if (app) app.removeCuisineFilter(cuisine);
-}
-
-function removeLocationFilter(location) {
-    if (app) app.removeLocationFilter(location);
-}
-
-// Mise à jour en temps réel des valeurs des sliders
-document.addEventListener("DOMContentLoaded", () => {
+  // Sliders de notation : affichage temps réel des valeurs
   ["plats", "vins", "accueil", "lieu"].forEach((type) => {
     const slider = document.getElementById(`rating-${type}`);
     const display = document.getElementById(`${type}-value`);
@@ -2543,43 +2142,29 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Gérer la checkbox "Vins non testés"
-    const winesNotTestedCheckbox = document.getElementById('wines-not-tested');
-    const vinsSlider = document.getElementById('rating-vins');
-    const vinsValue = document.getElementById('vins-value');
+  // Checkbox "Vins non testés" : désactive le slider vins
+  const winesNotTestedCheckbox = document.getElementById("wines-not-tested");
+  const vinsSlider = document.getElementById("rating-vins");
+  const vinsValue = document.getElementById("vins-value");
 
-    if (winesNotTestedCheckbox && vinsSlider && vinsValue) {
-        winesNotTestedCheckbox.addEventListener('change', function() {
-            if (this.checked) {
-                vinsSlider.disabled = true;
-                vinsSlider.style.opacity = '0.3';
-                vinsValue.textContent = 'N/A';
-            } else {
-                vinsSlider.disabled = false;
-                vinsSlider.style.opacity = '1';
-                vinsValue.textContent = parseFloat(vinsSlider.value).toFixed(1);
-            }
-        });
-    }
-
-  // Bouton de synchronisation dans le hero
-  const syncBtnHero = document.getElementById("sync-btn-hero");
-  if (syncBtnHero) {
-    syncBtnHero.addEventListener("click", () => {
-      if (app) {
-        app.manualSync();
+  if (winesNotTestedCheckbox && vinsSlider && vinsValue) {
+    winesNotTestedCheckbox.addEventListener("change", function () {
+      if (this.checked) {
+        vinsSlider.disabled = true;
+        vinsSlider.style.opacity = "0.3";
+        vinsValue.textContent = "N/A";
+      } else {
+        vinsSlider.disabled = false;
+        vinsSlider.style.opacity = "1";
+        vinsValue.textContent = parseFloat(vinsSlider.value).toFixed(1);
       }
     });
   }
 
-  // Bouton flottant
-  const floatingBtn = document.getElementById("floating-add-btn");
-  if (floatingBtn) {
-    floatingBtn.addEventListener("click", () => {
-      const activeTab = document.querySelector(".nav-link.active");
-      const type =
-        activeTab && activeTab.id.includes("wishlist") ? "wishlist" : "tested";
-      if (app) app.openAddModal(type);
-    });
-  }
+  console.log("✅ Application Netlify prête !");
 });
+
+/* ===== FONCTIONS GLOBALES (utilisées par les onclick inline de index.html) ===== */
+window.saveRestaurant = () => {
+  if (app) app.saveRestaurant();
+};

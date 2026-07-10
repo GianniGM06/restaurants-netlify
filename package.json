@@ -5,18 +5,21 @@
   "main": "public/index.html",
   "scripts": {
     "dev": "netlify dev",
-    "build": "npm install",
-    "deploy": "netlify deploy --prod"
+    "build": "echo 'no build step'",
+    "deploy": "netlify deploy --prod",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "pg": "^8.11.3"
   },
   "devDependencies": {
-    "netlify-cli": "^17.0.0"
+    "netlify-cli": "^17.0.0",
+    "vitest": "^2.1.9"
   },
   "keywords": [
     "restaurant",
-    "gastronomy", 
+    "gastronomy",
     "netlify",
     "postgresql",
     "neon"
