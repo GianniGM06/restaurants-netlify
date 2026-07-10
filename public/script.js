@@ -71,13 +71,13 @@ class RestaurantApp {
       await this.loadData();
 
       this.render();
+      this.updateSyncStatus();
     } catch (error) {
       console.error("Erreur initialisation:", error);
       // État d'erreur honnête : pas de fausses données de démo
+      // (renderErrorState positionne le badge sur "Hors ligne")
       this.renderErrorState();
     }
-
-    this.updateSyncStatus();
   }
 
   /* ===== ÉTAT D'ERREUR ===== */
