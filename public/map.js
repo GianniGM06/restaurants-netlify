@@ -3,13 +3,14 @@
 import { escapeHtml } from './ui.js';
 import { calculateRating } from './rating.js';
 
-const LEAFLET_CSS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
-const LEAFLET_JS  = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';
+// Leaflet et marqueurs auto-hébergés (vendor/) — plus de dépendance CDN
+const LEAFLET_CSS = 'vendor/leaflet/leaflet.css';
+const LEAFLET_JS  = 'vendor/leaflet/leaflet.js';
 
-const ICON_BLUE  = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png';
-const ICON_GREEN = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png';
-const ICON_RED   = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png';
-const ICON_SHADOW = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png';
+const ICON_BLUE   = 'vendor/leaflet/markers/marker-icon-2x-blue.png';
+const ICON_GREEN  = 'vendor/leaflet/markers/marker-icon-2x-green.png';
+const ICON_RED    = 'vendor/leaflet/markers/marker-icon-2x-red.png';
+const ICON_SHADOW = 'vendor/leaflet/markers/marker-shadow.png';
 
 const ICON_SIZE = [25, 41];
 const ICON_ANCHOR = [12, 41];
