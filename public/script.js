@@ -214,12 +214,11 @@ class RestaurantApp {
   }
 
   openGitHubConfig() {
-    // Créer le modal de configuration GitHub s'il n'existe pas
-    let modal = document.getElementById("github-config-modal");
-    if (!modal) {
-      modal = this.createGitHubConfigModal();
-      document.body.appendChild(modal);
-    }
+    // Regénéré à chaque ouverture : son contenu dépend de l'état de connexion
+    // (bouton "Se déconnecter", encart "Connecté en tant que")
+    document.getElementById("github-config-modal")?.remove();
+    const modal = this.createGitHubConfigModal();
+    document.body.appendChild(modal);
 
     // Remplir le champ avec le token actuel s'il existe
     const tokenInput = document.getElementById("github-token-input");
@@ -316,6 +315,9 @@ class RestaurantApp {
 
       this.isEditMode = true;
       this.updateAuthUI(true);
+      // Régénérer les cards : les boutons Modifier/Supprimer/Testé !
+      // n'existent pas dans le HTML rendu en mode lecture
+      this.render();
 
       // Fermer le modal
       const modal = bootstrap.Modal.getInstance(
@@ -334,6 +336,8 @@ class RestaurantApp {
     this.githubAuth.logout();
     this.isEditMode = false;
     this.updateAuthUI(false);
+    // Régénérer les cards en mode lecture (retrait des boutons d'édition)
+    this.render();
 
     // Fermer le modal
     const modal = bootstrap.Modal.getInstance(
@@ -1563,6 +1567,19 @@ applyFilters() {
     }
 }
 
+/**
+ * Clé de rendu d'une card : change si la DONNÉE du restaurant change ou si
+ * le mode lecture/édition bascule. Permet au rendu incrémental de détecter
+ * les cards au contenu périmé (bug : boutons Modifier absents après login,
+ * modifications invisibles avant rechargement).
+ */
+cardRenderKey(restaurant) {
+    const str = (this.isEditMode ? 'edit:' : 'read:') + JSON.stringify(restaurant);
+    let h = 5381; // djb2
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return String(h);
+}
+
 renderFiltered(type) {
     const container = document.getElementById(type === 'tested' ? 'tested-grid' : 'wishlist-grid');
     const data = this.filteredData[type];
@@ -1572,8 +1589,16 @@ renderFiltered(type) {
         return;
     }
 
-    // Rendu incrémental : ne remplacer que les cards qui ont changé
+    // Rendu incrémental : ne régénérer que les cards dont le contenu a changé
     const createCard = r => type === 'tested' ? this.createTestedCard(r) : this.createWishlistCard(r);
+    const buildNode = (r, key) => {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = createCard(r);
+        const node = tmp.firstElementChild;
+        node.dataset.restaurantId = r.id;
+        node.dataset.renderKey = key;
+        return node;
+    };
 
     // Index des nodes existants par restaurant ID
     const existingNodes = {};
@@ -1591,35 +1616,32 @@ renderFiltered(type) {
     // Si aucun node existant ne porte data-restaurant-id (premier rendu ou skeleton), régénérer entier
     if (Object.keys(existingNodes).length === 0) {
         const fragment = document.createDocumentFragment();
-        data.forEach(r => {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = createCard(r);
-            const node = tmp.firstElementChild;
-            node.dataset.restaurantId = r.id;
-            fragment.appendChild(node);
-        });
+        data.forEach(r => fragment.appendChild(buildNode(r, this.cardRenderKey(r))));
         container.innerHTML = '';
         container.appendChild(fragment);
         return;
     }
 
-    // Mise à jour / insertion / déplacement dans l'ordre.
-    // Un node existant est DÉPLACÉ (insertBefore), jamais dupliqué —
-    // indispensable depuis que le tri peut réordonner les cards.
+    // Mise à jour / remplacement / déplacement dans l'ordre.
+    // - contenu périmé (renderKey différent) -> node régénéré sur place
+    // - node existant -> DÉPLACÉ (insertBefore), jamais dupliqué (tri)
     data.forEach((r, i) => {
         const id = String(r.id);
-        const currentAtPos = container.children[i];
-        if (currentAtPos && currentAtPos.dataset.restaurantId === id) return; // déjà en place
+        const key = this.cardRenderKey(r);
 
         let node = existingNodes[id];
-        if (!node) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = createCard(r);
-            node = tmp.firstElementChild;
-            node.dataset.restaurantId = r.id;
+        if (node && node.dataset.renderKey !== key) {
+            const fresh = buildNode(r, key);
+            node.replaceWith(fresh);
+            node = fresh;
+            existingNodes[id] = fresh;
+        } else if (!node) {
+            node = buildNode(r, key);
             existingNodes[id] = node;
         }
-        container.insertBefore(node, currentAtPos || null);
+
+        const currentAtPos = container.children[i];
+        if (currentAtPos !== node) container.insertBefore(node, currentAtPos || null);
     });
 }
 
