@@ -21,16 +21,8 @@
     # et aucun CDN (Bootstrap/Icons/Leaflet auto-hébergés dans /vendor).
     # style 'unsafe-inline' conservé pour les attributs style des templates.
     # img-src https: nécessaire pour les photos externes (Unsplash, Imgur…) et les tuiles OSM.
-    Content-Security-Policy = """
-      default-src 'self';
-      script-src 'self';
-      style-src 'self' 'unsafe-inline';
-      img-src 'self' data: https: blob:;
-      font-src 'self';
-      connect-src 'self' https://api.github.com https://nominatim.openstreetmap.org;
-      worker-src 'none';
-      frame-ancestors 'none';
-    """
+    # NB : valeur mono-ligne obligatoire — un header multi-lignes fait planter `netlify dev`.
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self'; connect-src 'self' https://api.github.com https://nominatim.openstreetmap.org; worker-src 'none'; frame-ancestors 'none'"
 
 # Assets vendorés : cache long (on change le chemin si on change de version)
 [[headers]]

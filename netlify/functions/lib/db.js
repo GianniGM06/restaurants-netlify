@@ -13,10 +13,10 @@ function getPool() {
 
     pool = new Pool({
       connectionString: databaseUrl,
-      // TODO(TLS) : passer à la vérification du certificat (rejectUnauthorized: true
-      // ou driver @neondatabase/serverless) — à tester avec la vraie DB Neon.
+      // Vérification du certificat activée : les certs Neon sont signés par une
+      // CA publique reconnue par Node (testé contre la vraie DB le 2026-07-11).
       ssl: {
-        rejectUnauthorized: false
+        rejectUnauthorized: true
       }
     });
   }
