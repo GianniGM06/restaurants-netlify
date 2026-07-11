@@ -252,8 +252,8 @@ class RestaurantApp {
                                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
                             <div class="form-text">
                                 <strong>Comment obtenir un token :</strong><br>
-                                1. Allez sur <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings → Developer settings → Personal access tokens</a><br>
-                                2. Créez un nouveau token avec les permissions "repo"<br>
+                                1. Allez sur <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHub Settings → Developer settings → Fine-grained tokens</a><br>
+                                2. Créez un token <strong>sans aucune permission ni accès aux dépôts</strong> — il ne sert qu'à vérifier votre identité<br>
                                 3. Copiez-collez le token ici
                             </div>
                         </div>
