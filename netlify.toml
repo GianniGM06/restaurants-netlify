@@ -17,13 +17,15 @@
     X-Frame-Options = "DENY"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "geolocation=(self), camera=(), microphone=()"
+    # Scripts : aucun inline (handlers en addEventListener, thème dans theme-init.js).
+    # style 'unsafe-inline' conservé pour les attributs style des templates.
     Content-Security-Policy = """
       default-src 'self';
-      script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com;
-      style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com;
+      script-src 'self' https://cdn.jsdelivr.net;
+      style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
       img-src 'self' data: https: blob:;
       font-src 'self' https://cdn.jsdelivr.net;
-      connect-src 'self' https://api.github.com https://nominatim.openstreetmap.org https://*.neon.tech;
+      connect-src 'self' https://api.github.com https://nominatim.openstreetmap.org;
       worker-src 'none';
       frame-ancestors 'none';
     """

@@ -5,6 +5,7 @@ import {
   removeFilter,
   hasActiveFilters,
   emptyFilters,
+  sortRestaurants,
 } from '../filters.js';
 
 // ===== Données de test =====
@@ -161,6 +162,50 @@ describe('hasActiveFilters', () => {
 
   it('ignore une recherche composée d\'espaces', () => {
     expect(hasActiveFilters({ ...emptyFilters(), query: '  ' })).toBe(false);
+  });
+});
+
+// ===== sortRestaurants =====
+
+describe('sortRestaurants', () => {
+  const items = [
+    { id: 1, name: 'Zola',   dateAdded: '2024-01-10', ratings: { plats: 3, vins: 3, accueil: 3, lieu: 3 } },
+    { id: 2, name: 'Élan',   dateAdded: '2024-03-05', ratings: { plats: 5, vins: 5, accueil: 5, lieu: 5 } },
+    { id: 3, name: 'aubade', dateAdded: '2024-02-01' }, // wishlist : pas de notes
+  ];
+
+  it('recent : date d\'ajout décroissante', () => {
+    expect(sortRestaurants(items, 'recent').map(r => r.id)).toEqual([2, 3, 1]);
+  });
+
+  it('rating : note décroissante, sans-notes en fin', () => {
+    expect(sortRestaurants(items, 'rating').map(r => r.id)).toEqual([2, 1, 3]);
+  });
+
+  it('rating : respecte winesNotTested / vins null', () => {
+    const wines = [
+      { id: 1, ratings: { plats: 3, vins: 5, accueil: 3, lieu: 3 } },              // (6+7.5+4.5+3)/6 = 3.5
+      { id: 2, ratings: { plats: 5, vins: null, accueil: 5, lieu: 5 } },           // sans vins = 5
+    ];
+    expect(sortRestaurants(wines, 'rating').map(r => r.id)).toEqual([2, 1]);
+  });
+
+  it('name : alphabétique insensible casse/accents', () => {
+    expect(sortRestaurants(items, 'name').map(r => r.name)).toEqual(['aubade', 'Élan', 'Zola']);
+  });
+
+  it('ne mute pas le tableau source', () => {
+    const before = items.map(r => r.id);
+    sortRestaurants(items, 'name');
+    expect(items.map(r => r.id)).toEqual(before);
+  });
+
+  it('départage les dates égales par id décroissant', () => {
+    const sameDay = [
+      { id: 100, dateAdded: '2024-01-01' },
+      { id: 200, dateAdded: '2024-01-01' },
+    ];
+    expect(sortRestaurants(sameDay, 'recent').map(r => r.id)).toEqual([200, 100]);
   });
 });
 

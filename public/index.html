@@ -12,13 +12,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- Leaflet CSS chargé dynamiquement par script.js à l'ouverture de l'onglet Carte -->
     <!-- Thème appliqué avant le premier paint (anti-flash) ; le toggle est géré par theme.js -->
-    <script>
-        (function () {
-            var saved = localStorage.getItem('theme');
-            var theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-            document.documentElement.setAttribute('data-bs-theme', theme);
-        })();
-    </script>
+    <script src="theme-init.js"></script>
     <!-- Custom CSS -->
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -202,6 +196,12 @@
 
             <!-- Actions et compteur -->
             <div class="filters-actions">
+                <label class="visually-hidden" for="sort-select">Trier par</label>
+                <select id="sort-select" class="form-select sort-select">
+                    <option value="recent" selected>Plus récents</option>
+                    <option value="rating">Meilleure note</option>
+                    <option value="name">Nom A→Z</option>
+                </select>
                 <span class="results-count" id="results-count">-- restaurants</span>
                 <button class="clear-filters-btn" id="clear-filters-btn" disabled>
                     <i class="bi bi-x-circle"></i> Effacer
@@ -284,14 +284,10 @@
                                 <input type="text" class="form-control" id="restaurant-name" required>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Type de cuisine *</label>
-                                <div class="position-relative">
-                                    <input type="text" class="form-control" id="restaurant-cuisine" required placeholder="Tapez ou choisissez..." autocomplete="off">
-                                    <div id="cuisine-dropdown" class="position-absolute w-100 bg-white border rounded-3 shadow-sm" style="top: 100%; z-index: 1050; max-height: 200px; overflow-y: auto; display: none;">
-                                        <!-- Options générées dynamiquement -->
-                                    </div>
-                                    <i class="bi bi-chevron-down position-absolute" style="right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #6c757d;"></i>
-                                </div>
+                                <label class="form-label" for="restaurant-cuisine">Type de cuisine *</label>
+                                <input type="text" class="form-control" id="restaurant-cuisine" required
+                                       placeholder="Tapez ou choisissez…" list="cuisine-options" autocomplete="off">
+                                <datalist id="cuisine-options"></datalist>
                             </div>
                         </div>
 
@@ -388,7 +384,7 @@
     <div id="photos-container">
         <!-- Photos générées dynamiquement -->
     </div>
-    <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="app.addPhotoInput()">
+    <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="add-photo-btn">
         <i class="bi bi-plus-lg"></i> Ajouter une photo
     </button>
     <small class="text-muted d-block mt-1">Maximum 10 photos</small>
@@ -397,7 +393,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-                    <button type="button" class="btn btn-primary" onclick="saveRestaurant()">Enregistrer</button>
+                    <button type="button" class="btn btn-primary" id="save-restaurant-btn">Enregistrer</button>
                 </div>
             </div>
         </div>
@@ -514,11 +510,11 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body text-center position-relative">
-                <button class="btn btn-light position-absolute start-0 top-50 translate-middle-y ms-3" onclick="app.previousPhoto()" style="z-index: 1060;">
+                <button class="btn btn-light position-absolute start-0 top-50 translate-middle-y ms-3" id="lightbox-prev" aria-label="Photo précédente" style="z-index: 1060;">
                     <i class="bi bi-chevron-left"></i>
                 </button>
                 <img id="lightbox-image" src="" class="img-fluid" style="max-height: 70vh;">
-                <button class="btn btn-light position-absolute end-0 top-50 translate-middle-y me-3" onclick="app.nextPhoto()" style="z-index: 1060;">
+                <button class="btn btn-light position-absolute end-0 top-50 translate-middle-y me-3" id="lightbox-next" aria-label="Photo suivante" style="z-index: 1060;">
                     <i class="bi bi-chevron-right"></i>
                 </button>
             </div>

@@ -6,10 +6,22 @@ import './filters.js';
 import { escapeHtml } from './ui.js';
 import { calculateRating } from './rating.js';
 import { initTheme } from './theme.js';
+import * as Cards from './cards.js';
 
 /* Image de repli locale (data URI) — remplace via.placeholder.com, service mort */
 const FALLBACK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='100%25' height='100%25' fill='%23e9ecef'/%3E%3Ctext x='50%25' y='50%25' font-family='sans-serif' font-size='11' fill='%236c757d' text-anchor='middle' dy='.35em'%3EImage indisponible%3C/text%3E%3C/svg%3E";
-if (typeof window !== 'undefined') window.FALLBACK_IMG = FALLBACK_IMG;
+
+// Fallback global des images cassées, en phase de capture (l'événement error
+// ne bulle pas). Remplace les onerror inline, incompatibles avec un CSP strict.
+if (typeof document !== 'undefined') {
+  document.addEventListener('error', (e) => {
+    const img = e.target;
+    if (img instanceof HTMLImageElement && !img.dataset.fallbackApplied) {
+      img.dataset.fallbackApplied = '1';
+      img.src = FALLBACK_IMG;
+    }
+  }, true);
+}
 
 /* ===== SERVICE D'AUTHENTIFICATION GITHUB (auth.js) ===== */
 // Délégué à window.Auth.GitHubAuthService (chargé par auth.js)
@@ -42,13 +54,14 @@ class RestaurantApp {
     this.currentPhotos = [];
     this.currentPhotoIndex = 0;
 
-    // État des filtres
+    // État des filtres et du tri
     this.filters = {
         cuisines: [],
         prices: [],
         locations: [],
         query: ''
     };
+    this.sortKey = 'recent';
     this.filteredData = {
         tested: [],
         wishlist: []
@@ -160,7 +173,8 @@ class RestaurantApp {
     if (statusBadge) {
       if (isAuthenticated) {
         statusBadge.className = "badge bg-success";
-        statusBadge.innerHTML = `${escapeHtml(this.githubAuth.userInfo.login)} <button class="btn btn-sm btn-outline-light ms-1" onclick="app.githubLogout()" title="Se déconnecter"><i class="bi bi-box-arrow-right" aria-hidden="true"></i></button>`;
+        statusBadge.innerHTML = `${escapeHtml(this.githubAuth.userInfo.login)} <button class="btn btn-sm btn-outline-light ms-1" title="Se déconnecter"><i class="bi bi-box-arrow-right" aria-hidden="true"></i></button>`;
+        statusBadge.querySelector("button").addEventListener("click", () => this.githubLogout());
       } else {
         statusBadge.className = "badge bg-secondary";
         statusBadge.textContent = "Lecture seule";
@@ -175,8 +189,9 @@ class RestaurantApp {
         modeIndicator.innerHTML = `
     <i class="bi bi-github" aria-hidden="true"></i>
     Connecté : <strong>${escapeHtml(this.githubAuth.userInfo.login)}</strong> — mode édition
-    <button class="btn btn-sm btn-link p-0 ms-2 align-baseline" onclick="app.githubLogout()">Se déconnecter</button>
+    <button class="btn btn-sm btn-link p-0 ms-2 align-baseline">Se déconnecter</button>
 `;
+        modeIndicator.querySelector("button").addEventListener("click", () => this.githubLogout());
       } else {
         modeIndicator.className = "mode-pill is-info";
         modeIndicator.innerHTML = `
@@ -258,20 +273,22 @@ class RestaurantApp {
                         ${
                           this.githubAuth.isAuthenticated
                             ? `
-                        <button type="button" class="btn btn-danger" onclick="app.githubLogout()">
+                        <button type="button" class="btn btn-danger" data-modal-action="logout">
                             <i class="bi bi-box-arrow-right"></i> Se déconnecter
                         </button>
                         `
                             : ""
                         }
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-                        <button type="button" class="btn btn-primary" onclick="app.githubLogin()">
+                        <button type="button" class="btn btn-primary" data-modal-action="login">
                             <i class="bi bi-key"></i> Se connecter
                         </button>
                     </div>
                 </div>
             </div>
         `;
+    modal.querySelector('[data-modal-action="logout"]')?.addEventListener("click", () => this.githubLogout());
+    modal.querySelector('[data-modal-action="login"]').addEventListener("click", () => this.githubLogin());
     return modal;
   }
 
@@ -414,10 +431,18 @@ class RestaurantApp {
     this.setupEventListeners();
     // Branchés UNE SEULE FOIS (délégation) — jamais lors des re-render
     this.setupFilterEvents();
-    this.setupCuisineAutocomplete();
     this.setupCardActions();
     this.setupBadgeEvents();
     this.setupPhotoInputEvents();
+    this.setupStaticButtons();
+  }
+
+  // Boutons statiques de index.html (aucun onclick inline : compatibilité CSP)
+  setupStaticButtons() {
+    document.getElementById("add-photo-btn")?.addEventListener("click", () => this.addPhotoInput());
+    document.getElementById("save-restaurant-btn")?.addEventListener("click", () => this.saveRestaurant());
+    document.getElementById("lightbox-prev")?.addEventListener("click", () => this.previousPhoto());
+    document.getElementById("lightbox-next")?.addEventListener("click", () => this.nextPhoto());
   }
 
   /* ===== DÉLÉGATION D'ÉVÉNEMENTS =====
@@ -644,185 +669,13 @@ if (nearbyBtn) {
     }
   }
 
-  renderTested() {
-    const container = document.getElementById("tested-grid");
-    if (this.data.tested.length === 0) {
-      container.innerHTML = this.createEmptyState("tested");
-    } else {
-      container.innerHTML = this.data.tested
-        .map((r) => this.createTestedCard(r))
-        .join("");
-    }
-  }
-
-  renderWishlist() {
-    const container = document.getElementById("wishlist-grid");
-    if (this.data.wishlist.length === 0) {
-      container.innerHTML = this.createEmptyState("wishlist");
-    } else {
-      container.innerHTML = this.data.wishlist
-        .map((r) => this.createWishlistCard(r))
-        .join("");
-    }
-  }
-
-  /* ===== CRÉATION DES CARDS ===== */
+  /* ===== CRÉATION DES CARDS — templates dans cards.js ===== */
   createTestedCard(restaurant) {
-    const rating = this.calculateRating(restaurant.ratings, restaurant.winesNotTested);
-    const photo = restaurant.photo || restaurant.photos?.[0]?.url ||
-        "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=250&fit=crop";
-
-    const editButtons = this.isEditMode ? `
-        <button class="btn btn-outline-primary btn-action" data-action="edit">
-            <i class="bi bi-pencil"></i> Modifier
-        </button>
-        <button class="btn btn-outline-danger btn-action" data-action="delete">
-            <i class="bi bi-trash"></i> Supprimer
-        </button>
-    ` : "";
-
-    // Générer la galerie photos
-    const photoGallery = restaurant.photos && restaurant.photos.length > 0 ? `
-        <div class="photo-gallery">
-            ${restaurant.photos.map((photo, index) => `
-                <button type="button" class="photo-item" data-action="open-photo" data-photo-index="${index}" aria-label="Voir photo ${index + 1}">
-                    <img src="${escapeHtml(photo.url)}" alt="Photo ${index + 1}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src=window.FALLBACK_IMG">
-                </button>
-            `).join('')}
-        </div>
-    ` : `
-        <div class="empty-gallery">
-            <i class="bi bi-camera" aria-hidden="true"></i>
-            <p class="mb-0">Aucune photo ajoutée</p>
-        </div>
-    `;
-
-    return `
-        <div class="col-md-6 mb-4" data-restaurant-id="${escapeHtml(restaurant.id)}">
-            <div class="card restaurant-card h-100">
-                <img src="${escapeHtml(photo)}" class="card-img-top" alt="${escapeHtml(restaurant.name)}"
-                     ${restaurant.googleMapsUrl ? 'style="cursor: pointer;" data-action="open-maps" title="Cliquer pour ouvrir dans Google Maps"' : ''}
-                     loading="lazy" decoding="async">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h3 class="card-title h5">${escapeHtml(restaurant.name)}</h3>
-                        <span class="badge bg-primary">${escapeHtml(restaurant.type)}</span>
-                    </div>
-                    <p class="card-text text-muted">
-                        <i class="bi bi-geo-alt" aria-hidden="true"></i> ${escapeHtml(restaurant.address || restaurant.location)}
-                        <span class="ms-2">${escapeHtml(restaurant.priceRange || "€€")}</span>
-                    </p>
-
-                    ${photoGallery}
-
-                    <div class="final-rating" id="final-rating-${escapeHtml(restaurant.id)}">
-                        <div class="rating-simple">
-                            <strong>${rating.toFixed(1)}/5</strong> ${this.generateStars(rating)}
-                            <button class="btn btn-sm btn-outline-light ms-2" data-action="toggle-detail">
-                                Détails
-                            </button>
-                        </div>
-                        <div class="rating-detailed" style="display: none;">
-                            <div class="final-rating-compact">
-                                <div class="rating-item">
-                                    <span class="icon" aria-hidden="true">🍽️</span>
-                                    <span class="value">${restaurant.ratings.plats.toFixed(1)}</span>
-                                </div>
-                                ${restaurant.winesNotTested ?
-                                    '<div class="rating-item"><span class="icon" aria-hidden="true">🍷</span><span class="value text-muted">N/A</span></div>' :
-                                    `<div class="rating-item"><span class="icon" aria-hidden="true">🍷</span><span class="value">${restaurant.ratings.vins.toFixed(1)}</span></div>`
-                                }
-                                <div class="rating-item">
-                                    <span class="icon" aria-hidden="true">😊</span>
-                                    <span class="value">${restaurant.ratings.accueil.toFixed(1)}</span>
-                                </div>
-                                <div class="rating-item">
-                                    <span class="icon" aria-hidden="true">🏛️</span>
-                                    <span class="value">${restaurant.ratings.lieu.toFixed(1)}</span>
-                                </div>
-                            </div>
-                            <button class="btn btn-sm btn-outline-light mt-2" data-action="toggle-detail">
-                                Note
-                            </button>
-                        </div>
-                    </div>
-
-                    ${restaurant.comment ? `<blockquote class="blockquote-footer mt-3">"${escapeHtml(restaurant.comment)}"</blockquote>` : ""}
-
-                    <div class="action-buttons">
-                        ${editButtons}
-                        ${restaurant.coordinates ? `
-                        <button class="btn btn-outline-info btn-action" data-action="show-map">
-                            <i class="bi bi-geo-alt" aria-hidden="true"></i> Carte
-                        </button>
-                        ` : ""}
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-}
+    return Cards.createTestedCard(restaurant, this.isEditMode);
+  }
 
   createWishlistCard(restaurant) {
-    const photo = restaurant.photo || restaurant.photos?.[0] ||
-        "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=250&fit=crop";
-
-    const editButtons = this.isEditMode ? `
-        <button class="btn btn-success btn-action" data-action="move">
-            <i class="bi bi-arrow-right" aria-hidden="true"></i> Testé !
-        </button>
-        <button class="btn btn-outline-primary btn-action" data-action="edit">
-            <i class="bi bi-pencil" aria-hidden="true"></i> Modifier
-        </button>
-        <button class="btn btn-outline-danger btn-action" data-action="delete">
-            <i class="bi bi-trash" aria-hidden="true"></i> Supprimer
-        </button>
-    ` : `
-        <button class="btn btn-outline-secondary btn-action" disabled>
-            <i class="bi bi-lock" aria-hidden="true"></i> Mode lecture
-        </button>
-    `;
-
-    // Conteneur cliquable si Google Maps URL disponible (délégation data-action)
-    const cardClickableStart = restaurant.googleMapsUrl ?
-        `<div class="card restaurant-card wishlist-card h-100" style="cursor: pointer;" data-action="open-maps" title="Cliquer pour ouvrir dans Google Maps">` :
-        `<div class="card restaurant-card wishlist-card h-100">`;
-
-    return `
-        <div class="col-md-6 mb-4" data-restaurant-id="${escapeHtml(restaurant.id)}">
-            ${cardClickableStart}
-                <img src="${escapeHtml(photo)}" class="card-img-top" alt="${escapeHtml(restaurant.name)}" loading="lazy" decoding="async">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h3 class="card-title h5">${escapeHtml(restaurant.name)}</h3>
-                        <span class="badge bg-success">${escapeHtml(restaurant.type)}</span>
-                    </div>
-                    <p class="card-text text-muted">
-                        <i class="bi bi-geo-alt" aria-hidden="true"></i> ${escapeHtml(restaurant.address || restaurant.location)}
-                        <span class="ms-2">${escapeHtml(restaurant.priceRange || "€€")}</span>
-                    </p>
-
-                    ${restaurant.reason ? `
-                    <div class="alert alert-success">
-                        <strong><span aria-hidden="true">💡</span> Pourquoi :</strong><br>
-                        ${escapeHtml(restaurant.reason)}
-                    </div>
-                    ` : ""}
-
-                    ${restaurant.comment ? `<p class="text-muted"><em>"${escapeHtml(restaurant.comment)}"</em></p>` : ""}
-
-                    <div class="action-buttons">
-                        ${editButtons}
-                        ${restaurant.coordinates ? `
-                        <button class="btn btn-outline-info btn-action" data-action="show-map">
-                            <i class="bi bi-geo-alt" aria-hidden="true"></i> Carte
-                        </button>
-                        ` : ""}
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
+    return Cards.createWishlistCard(restaurant, this.isEditMode);
   }
 
   toggleRatingDetail(restaurantId) {
@@ -872,37 +725,7 @@ nextPhoto() {
 }
 
   createEmptyState(type) {
-    const isWishlist = type === "wishlist";
-    const icon = isWishlist ? "heart" : "star";
-    const title = isWishlist
-      ? "Aucun restaurant en wishlist"
-      : "Aucun restaurant testé";
-    const text = isWishlist
-      ? "Ajoutez des restaurants que vous aimeriez tester !"
-      : "Commencez par ajouter vos premiers restaurants testés !";
-
-    const button = this.isEditMode
-      ? `
-            <button class="btn btn-${
-              isWishlist ? "success" : "primary"
-            }" data-action="add">
-                <i class="bi bi-plus-lg"></i> Ajouter
-            </button>
-        `
-      : `
-            <button class="btn btn-outline-secondary" data-action="github-config">
-                <i class="bi bi-key"></i> Se connecter pour ajouter
-            </button>
-        `;
-
-    return `
-            <div class="col-12 text-center py-5">
-                <i class="bi bi-${icon} fs-1 text-muted mb-3"></i>
-                <h4>${title}</h4>
-                <p class="text-muted">${text}</p>
-                ${button}
-            </div>
-        `;
+    return Cards.createEmptyState(type, this.isEditMode);
   }
 
   /* ===== MODAL D'AJOUT/MODIFICATION ===== */
@@ -969,7 +792,7 @@ renderPhotoInputs() {
         <div class="photo-input-group" data-photo-index="${index}">
             <div class="row align-items-center">
                 <div class="col-md-2">
-                    ${photo.url ? `<img src="${escapeHtml(photo.url)}" class="photo-preview" onerror="this.onerror=null;this.src=window.FALLBACK_IMG">` :
+                    ${photo.url ? `<img src="${escapeHtml(photo.url)}" class="photo-preview" alt="Aperçu de la photo">` :
                     `<div class="photo-preview d-flex align-items-center justify-content-center bg-light">
                         <i class="bi bi-image text-muted" aria-hidden="true"></i>
                     </div>`}
@@ -1317,7 +1140,7 @@ if (address && address.trim() !== '') {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-                        <button type="button" class="btn btn-success" onclick="app.confirmTransfer()">
+                        <button type="button" class="btn btn-success" data-modal-action="confirm-transfer">
                             <i class="bi bi-arrow-right"></i> Transférer
                         </button>
                     </div>
@@ -1325,19 +1148,19 @@ if (address && address.trim() !== '') {
             </div>
         `;
 
-    // Ajouter les event listeners pour les sliders
-    setTimeout(() => {
-      ["plats", "vins", "accueil", "lieu"].forEach((type) => {
-        const slider = document.getElementById(`transfer-rating-${type}`);
-        const display = document.getElementById(`transfer-${type}-value`);
+    modal.querySelector('[data-modal-action="confirm-transfer"]').addEventListener("click", () => this.confirmTransfer());
 
-        if (slider && display) {
-          slider.addEventListener("input", () => {
-            display.textContent = parseFloat(slider.value).toFixed(1);
-          });
-        }
-      });
-    }, 100);
+    // Affichage temps réel des valeurs des sliders (le modal vient d'être créé)
+    ["plats", "vins", "accueil", "lieu"].forEach((type) => {
+      const slider = modal.querySelector(`#transfer-rating-${type}`);
+      const display = modal.querySelector(`#transfer-${type}-value`);
+
+      if (slider && display) {
+        slider.addEventListener("input", () => {
+          display.textContent = parseFloat(slider.value).toFixed(1);
+        });
+      }
+    });
 
     return modal;
   }
@@ -1420,13 +1243,14 @@ if (address && address.trim() !== '') {
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                         <i class="bi bi-x-lg"></i> Annuler
                     </button>
-                    <button type="button" class="btn btn-danger" onclick="app.confirmDelete()">
+                    <button type="button" class="btn btn-danger" data-modal-action="confirm-delete">
                         <i class="bi bi-trash3"></i> Oui, supprimer
                     </button>
                 </div>
             </div>
         </div>
     `;
+    modal.querySelector('[data-modal-action="confirm-delete"]').addEventListener("click", () => this.confirmDelete());
     return modal;
 }
 
@@ -1481,119 +1305,21 @@ async confirmDelete() {
 }
 
   /* ===== GESTION CUISINE TYPES ===== */
-  setupCuisineAutocomplete() {
-    try {
-      const cuisineInput = document.getElementById("restaurant-cuisine");
-      const cuisineDropdown = document.getElementById("cuisine-dropdown");
-
-      if (!cuisineInput || !cuisineDropdown) {
-        return;
-      }
-
-
-      // Sélection d'une option par délégation (les items sont regénérés en innerHTML)
-      cuisineDropdown.addEventListener("click", (e) => {
-        const item = e.target.closest(".dropdown-item");
-        if (item && item.dataset.value != null) this.selectCuisine(item.dataset.value);
-      });
-
-      // Input event
-      cuisineInput.addEventListener("input", (e) => {
-        this.filterCuisineOptions(e.target.value);
-      });
-
-      // Focus event
-      cuisineInput.addEventListener("focus", () => {
-        this.showCuisineDropdown();
-      });
-
-      // Click outside
-      document.addEventListener("click", (e) => {
-        if (
-          !cuisineInput.contains(e.target) &&
-          !cuisineDropdown.contains(e.target)
-        ) {
-          cuisineDropdown.style.display = "none";
-        }
-      });
-    } catch (error) {
-      console.warn("⚠️ Erreur setup cuisine autocomplete:", error);
-    }
-  }
-
+  // Autocomplete via <datalist> natif (accessible clavier + lecteur d'écran)
   updateCuisineDropdown() {
-    try {
-      const dropdown = document.getElementById("cuisine-dropdown");
-      if (!dropdown) {
-        return;
-      }
+    const datalist = document.getElementById("cuisine-options");
+    if (!datalist) return;
 
-      // Obtenir tous les types de cuisine uniques
-      const allCuisines = new Set();
-
-      // Ajouter les types par défaut
-      this.data.cuisineTypes.forEach((type) => allCuisines.add(type.value));
-
-      // Ajouter les types des restaurants existants
-      [...this.data.tested, ...this.data.wishlist].forEach((restaurant) => {
-        allCuisines.add(restaurant.type);
-      });
-
-      // Générer les options (sélection par délégation — voir setupCuisineAutocomplete)
-      const sortedCuisines = Array.from(allCuisines).sort();
-      dropdown.innerHTML = sortedCuisines
-        .map((cuisine) => {
-          const cuisineData = this.data.cuisineTypes.find(
-            (c) => c.value === cuisine
-          );
-          const emoji = cuisineData ? cuisineData.emoji : "🍽️";
-          return `<div class="dropdown-item" role="button" data-value="${escapeHtml(cuisine)}">${escapeHtml(emoji)} ${escapeHtml(cuisine)}</div>`;
-        })
-        .join("");
-
-    } catch (error) {
-      console.warn("⚠️ Erreur update cuisine dropdown:", error);
-    }
-  }
-
-  filterCuisineOptions(searchValue) {
-    const dropdown = document.getElementById("cuisine-dropdown");
-    if (!dropdown) return;
-
-    const items = dropdown.querySelectorAll(".dropdown-item");
-    const search = searchValue.toLowerCase();
-
-    items.forEach((item) => {
-      const text = item.textContent.toLowerCase();
-      item.style.display = text.includes(search) ? "block" : "none";
+    const allCuisines = new Set();
+    this.data.cuisineTypes.forEach((type) => allCuisines.add(type.value));
+    [...this.data.tested, ...this.data.wishlist].forEach((restaurant) => {
+      allCuisines.add(restaurant.type);
     });
 
-    this.showCuisineDropdown();
-  }
-
-  showCuisineDropdown() {
-    const dropdown = document.getElementById("cuisine-dropdown");
-    if (dropdown) {
-      dropdown.style.display = "block";
-    }
-  }
-
-  selectCuisine(cuisine) {
-    const cuisineInput = document.getElementById("restaurant-cuisine");
-    const dropdown = document.getElementById("cuisine-dropdown");
-
-    if (cuisineInput) {
-      cuisineInput.value = cuisine;
-    }
-
-    if (dropdown) {
-      dropdown.style.display = "none";
-    }
-
-    // Déclencher l'événement input pour valider le formulaire si nécessaire
-    if (cuisineInput) {
-      cuisineInput.dispatchEvent(new Event("input", { bubbles: true }));
-    }
+    datalist.innerHTML = Array.from(allCuisines)
+      .sort()
+      .map((cuisine) => `<option value="${escapeHtml(cuisine)}"></option>`)
+      .join("");
   }
 
   addNewCuisineType(cuisineValue) {
@@ -1802,6 +1528,15 @@ if (locationMenu) {
         });
     }
 
+    // Tri
+    const sortSelect = document.getElementById('sort-select');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', (e) => {
+            this.sortKey = e.target.value;
+            this.applyFilters();
+        });
+    }
+
     // Bouton effacer filtres
     const clearBtn = document.getElementById('clear-filters-btn');
     if (clearBtn) {
@@ -1829,9 +1564,12 @@ updateDropdownButtonText(btnId, count, label) {
 applyFilters() {
     const currentTab = this.getCurrentTab();
 
-    // Déléguer le filtrage pur à filters.js
+    // Déléguer le filtrage et le tri purs à filters.js
     ['tested', 'wishlist'].forEach(type => {
-        this.filteredData[type] = window.Filters.applyFilters(this.data[type], this.filters);
+        this.filteredData[type] = window.Filters.sortRestaurants(
+            window.Filters.applyFilters(this.data[type], this.filters),
+            this.sortKey
+        );
     });
     
     // Mettre à jour l'affichage de l'onglet actuel
@@ -1883,42 +1621,28 @@ renderFiltered(type) {
         return;
     }
 
-    // Mise à jour / insertion dans l'ordre
+    // Mise à jour / insertion / déplacement dans l'ordre.
+    // Un node existant est DÉPLACÉ (insertBefore), jamais dupliqué —
+    // indispensable depuis que le tri peut réordonner les cards.
     data.forEach((r, i) => {
         const id = String(r.id);
-        const tmp = document.createElement('div');
-        tmp.innerHTML = createCard(r);
-        const newNode = tmp.firstElementChild;
-        newNode.dataset.restaurantId = r.id;
-
         const currentAtPos = container.children[i];
-        if (!currentAtPos) {
-            container.appendChild(newNode);
-        } else if (currentAtPos.dataset.restaurantId !== id) {
-            container.insertBefore(newNode, currentAtPos);
+        if (currentAtPos && currentAtPos.dataset.restaurantId === id) return; // déjà en place
+
+        let node = existingNodes[id];
+        if (!node) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = createCard(r);
+            node = tmp.firstElementChild;
+            node.dataset.restaurantId = r.id;
+            existingNodes[id] = node;
         }
-        // Si même ID à la même position, on garde l'existant (pas de re-render)
+        container.insertBefore(node, currentAtPos || null);
     });
 }
 
 createFilteredEmptyState(type) {
-    const hasActiveFilters = this.hasActiveFilters();
-    const isWishlist = type === 'wishlist';
-    
-    if (hasActiveFilters) {
-        return `
-            <div class="col-12 text-center py-5">
-                <i class="bi bi-search fs-1 text-muted mb-3"></i>
-                <h4>Aucun restaurant trouvé</h4>
-                <p class="text-muted">Aucun restaurant ne correspond aux filtres sélectionnés.</p>
-                <button class="btn btn-outline-primary" data-action="clear-filters">
-                    <i class="bi bi-x-circle"></i> Effacer les filtres
-                </button>
-            </div>
-        `;
-    } else {
-        return this.createEmptyState(type);
-    }
+    return Cards.createFilteredEmptyState(type, this.hasActiveFilters(), this.isEditMode);
 }
 
 updateCuisineBadges() {
@@ -2151,8 +1875,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initTheme();
 
   app = new RestaurantApp();
-  // Exposé pour les handlers inline (onclick="app.…") — script.js est un module,
-  // ses déclarations ne sont plus globales par défaut.
+  // Exposé pour le debugging console — plus aucun handler inline n'en dépend.
   window.app = app;
   await app.init();
 
@@ -2189,7 +1912,3 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 });
 
-/* ===== FONCTIONS GLOBALES (utilisées par les onclick inline de index.html) ===== */
-window.saveRestaurant = () => {
-  if (app) app.saveRestaurant();
-};

@@ -537,6 +537,13 @@ input, select, textarea {
     gap: 0.75rem;
 }
 
+.sort-select {
+    width: auto;
+    font-size: var(--font-size-sm);
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+}
+
 .results-count {
     font-size: var(--font-size-sm);
     color: var(--color-text-muted);
@@ -900,15 +907,6 @@ input, select, textarea {
     padding: 0.5rem 0.75rem;
 }
 
-/* Autocomplete cuisine (modal) */
-#cuisine-dropdown {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-md);
-}
-
-#cuisine-dropdown .dropdown-item { cursor: pointer; }
 
 /* ===== ACCORDION (FAQ) ===== */
 .accordion {
