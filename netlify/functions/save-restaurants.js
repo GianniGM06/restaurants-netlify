@@ -1,59 +1,9 @@
-const { Pool } = require('pg');
+/* Endpoint de sauvegarde EN BLOC (full-replace) - conserve pour les imports/
+   restaurations completes. Les operations courantes passent par les endpoints
+   unitaires upsert-restaurant / delete-restaurant. */
 
-let pool;
-
-function getPool() {
-  if (!pool) {
-    const databaseUrl = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
-
-    if (!databaseUrl) {
-      throw new Error('DATABASE_URL non configurée');
-    }
-
-    pool = new Pool({
-      connectionString: databaseUrl,
-      ssl: {
-        rejectUnauthorized: false
-      }
-    });
-  }
-  return pool;
-}
-
-// Logins GitHub autorisés en écriture (vérifiés CÔTÉ SERVEUR).
-// Surchargez avec la variable d'env Netlify ALLOWED_GITHUB_USERS (séparés par des virgules).
-const ALLOWED_USERS = (process.env.ALLOWED_GITHUB_USERS || 'giannigm06')
-  .split(',')
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
-
-async function authenticateRequest(event) {
-  const authHeader = event.headers.authorization || event.headers.Authorization || '';
-  const token = authHeader.replace(/^(Bearer|token)\s+/i, '').trim();
-
-  if (!token) {
-    return { ok: false, status: 401, message: 'Authentification requise : token GitHub manquant' };
-  }
-
-  const response = await fetch('https://api.github.com/user', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github.v3+json',
-      'User-Agent': 'restaurants-netlify',
-    },
-  });
-
-  if (!response.ok) {
-    return { ok: false, status: 401, message: 'Token GitHub invalide' };
-  }
-
-  const user = await response.json();
-  if (!ALLOWED_USERS.includes((user.login || '').toLowerCase())) {
-    return { ok: false, status: 403, message: `Utilisateur "${user.login}" non autorisé en écriture` };
-  }
-
-  return { ok: true, login: user.login };
-}
+const { getPool } = require('./lib/db.js');
+const { authenticateRequest, writeCorsHeaders } = require('./lib/auth.js');
 
 /** Valide le payload et retourne la liste normalisée, ou une erreur. */
 function validatePayload(requestData) {
@@ -92,13 +42,7 @@ function validatePayload(requestData) {
 }
 
 exports.handler = async (event, context) => {
-  const headers = {
-    // Endpoint d'écriture : CORS restreint à l'origine du site (URL fournie par Netlify)
-    'Access-Control-Allow-Origin': process.env.URL || '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Content-Type': 'application/json'
-  };
+  const headers = writeCorsHeaders();
 
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };

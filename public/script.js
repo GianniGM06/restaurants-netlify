@@ -359,21 +359,6 @@ class RestaurantApp {
     }
   }
 
-  /* ===== SAUVEGARDE (api.js) ===== */
-  async saveData() {
-    try {
-      await window.Api.persistRestaurants({
-        tested: this.data.tested,
-        wishlist: this.data.wishlist,
-        cuisineTypes: this.generateCuisineTypesObject(),
-      }, this.githubAuth.token);
-      return true;
-    } catch (error) {
-      this.showToast('❌ Erreur sauvegarde: ' + error.message, 'danger');
-      return false;
-    }
-  }
-
   /* ===== SYNCHRONISATION MANUELLE ===== */
   async manualSync() {
     try {
@@ -386,38 +371,44 @@ class RestaurantApp {
     }
   }
 
-  /* ===== SAUVEGARDE AUTOMATIQUE ===== */
-  async autoSave() {
-    if (!this.isEditMode) return;
+  /* ===== PERSISTANCE UNITAIRE (endpoints CRUD) =====
+     Chaque ajout/modification/suppression envoie SA propre requête —
+     fini le full-replace qui pouvait écraser la base avec des données périmées. */
+
+  async persistOperation(operation) {
+    if (!this.isEditMode) return false;
 
     this.updateSyncStatus("Sauvegarde…");
 
     try {
-      const success = await this.saveData();
-
-      if (success) {
-        this.updateSyncStatus("Sauvegardé");
-        this.setSyncWarning(false);
-
-        setTimeout(() => {
-          this.updateSyncStatus();
-        }, 2000);
-      } else {
-        throw new Error("Échec de la sauvegarde");
-      }
+      await operation();
+      this.updateSyncStatus("Sauvegardé");
+      this.setSyncWarning(false);
+      setTimeout(() => this.updateSyncStatus(), 2000);
+      return true;
     } catch (error) {
-      console.error("Erreur sauvegarde automatique:", error);
+      console.error("Erreur sauvegarde:", error);
       this.updateSyncStatus("Non synchronisé");
       this.setSyncWarning(true);
       this.showToast(
-        "Sauvegarde échouée — vos modifications ne sont pas enregistrées. Vérifiez votre connexion puis relancez via « Actualiser ».",
+        `Sauvegarde échouée — vos modifications ne sont pas enregistrées (${error.message}). Vérifiez votre connexion puis réessayez.`,
         "danger"
       );
-
-      setTimeout(() => {
-        this.updateSyncStatus();
-      }, 5000);
+      setTimeout(() => this.updateSyncStatus(), 5000);
+      return false;
     }
+  }
+
+  persistOne(restaurant, status) {
+    return this.persistOperation(() =>
+      window.Api.upsertRestaurant(restaurant, status, this.githubAuth.token)
+    );
+  }
+
+  persistDelete(id) {
+    return this.persistOperation(() =>
+      window.Api.deleteRestaurant(id, this.githubAuth.token)
+    );
   }
 
   setSyncWarning(active) { window.UI.setSyncWarning(document.getElementById('status-badge'), active); }
@@ -937,16 +928,8 @@ if (address && address.trim() !== '') {
       "success"
     );
 
-    // Sauvegarde automatique en arrière-plan
-    try {
-      await this.autoSave();
-    } catch (error) {
-      console.error("❌ Erreur sauvegarde:", error);
-      this.showToast(
-        "⚠️ Erreur sauvegarde, modification locale seulement",
-        "warning"
-      );
-    }
+    // Persistance unitaire en arrière-plan
+    await this.persistOne(restaurantData, type);
   }
 
   editRestaurant(id, type) {
@@ -1207,8 +1190,9 @@ if (address && address.trim() !== '') {
 
     this.showToast('✅ Restaurant déplacé vers "Testés" !', "success");
 
-    // Sauvegarde automatique en arrière-plan
-    await this.autoSave();
+    // Persistance unitaire : l'upsert bascule le statut, pose les notes
+    // et purge la raison côté serveur
+    await this.persistOne(testedRestaurant, "tested");
   }
 
   createDeleteConfirmModal() {
@@ -1292,15 +1276,13 @@ async confirmDelete() {
     this.render();
     this.showToast(`✅ "${restaurant.name}" supprimé !`, 'success');
     
-    // Sauvegarde automatique en arrière-plan
-    try {
-        await this.autoSave();
-    } catch (error) {
-        console.error('❌ Erreur sauvegarde suppression:', error);
-        // Recharger les données en cas d'erreur
-        await this.loadData();
-        this.render();
-        this.showToast('❌ Erreur suppression, données rechargées', 'warning');
+    // Suppression unitaire côté serveur ; en cas d'échec, on resynchronise
+    const ok = await this.persistDelete(id);
+    if (!ok) {
+        try {
+            await this.loadData();
+            this.render();
+        } catch { /* hors ligne : l'état "Non synchronisé" est déjà affiché */ }
     }
 }
 

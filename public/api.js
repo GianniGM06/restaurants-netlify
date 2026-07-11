@@ -8,20 +8,35 @@ export async function fetchRestaurants() {
   return response.json();
 }
 
-export async function persistRestaurants(payload, token) {
+async function postJson(path, payload, token) {
   const headers = { 'Content-Type': 'application/json' };
   // L'API d'écriture vérifie ce token GitHub côté serveur (allowlist)
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${API_BASE}/save-restaurants`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.message || 'Erreur sauvegarde');
+    throw new Error(err.message || `Erreur API (${response.status})`);
   }
   return response.json();
+}
+
+/** Crée ou met à jour UN restaurant (endpoint unitaire). */
+export function upsertRestaurant(restaurant, status, token) {
+  return postJson('/upsert-restaurant', { restaurant, status }, token);
+}
+
+/** Supprime UN restaurant. */
+export function deleteRestaurant(id, token) {
+  return postJson('/delete-restaurant', { id }, token);
+}
+
+/** Sauvegarde en bloc (full-replace) — conservé pour import/restauration. */
+export function persistRestaurants(payload, token) {
+  return postJson('/save-restaurants', payload, token);
 }
 
 export async function geocodeAddress(address) {
@@ -42,5 +57,5 @@ export async function geocodeAddress(address) {
 }
 
 if (typeof window !== 'undefined') {
-  window.Api = { fetchRestaurants, persistRestaurants, geocodeAddress };
+  window.Api = { fetchRestaurants, upsertRestaurant, deleteRestaurant, persistRestaurants, geocodeAddress };
 }
