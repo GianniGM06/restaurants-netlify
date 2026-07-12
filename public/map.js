@@ -1,6 +1,6 @@
 /* ===== MODULE CARTE — Leaflet dynamique + géolocalisation ===== */
 
-import { escapeHtml } from './ui.js';
+import { escapeHtml, isSafeHttpUrl } from './ui.js';
 import { calculateRating } from './rating.js';
 
 // Leaflet et marqueurs auto-hébergés (vendor/) — plus de dépendance CDN
@@ -84,7 +84,8 @@ export class MapManager {
 
     filteredData.tested.forEach(r => {
       if (!r.coordinates) return;
-      const rating = calculateRating(r.ratings, r.winesNotTested);
+      // Garde : testé sans notes -> pas de ligne de note dans le popup
+      const rating = r.ratings ? calculateRating(r.ratings, r.winesNotTested) : null;
       const dist = this.userPosition ? calculateDistance(this.userPosition.lat, this.userPosition.lng, r.coordinates.lat, r.coordinates.lng) : null;
       const marker = L.marker([r.coordinates.lat, r.coordinates.lng], { icon: makeIcon(ICON_BLUE) }).addTo(this.map);
       marker.bindPopup(`
@@ -93,9 +94,9 @@ export class MapManager {
           <p class="mb-1"><span class="badge bg-primary">${escapeHtml(r.type)}</span></p>
           <p class="mb-2">${escapeHtml(r.location)}</p>
           ${dist ? `<p class="mb-2"><i class="bi bi-pin-map"></i> <strong>${dist}</strong></p>` : ''}
-          <div class="mb-2">${this.generateStars(rating)} ${rating.toFixed(1)}/5</div>
+          ${rating !== null ? `<div class="mb-2">${this.generateStars(rating)} ${rating.toFixed(1)}/5</div>` : ''}
           ${r.comment ? `<p class="small mt-2"><em>"${escapeHtml(r.comment)}"</em></p>` : ''}
-          ${r.googleMapsUrl ? `<a href="${escapeHtml(r.googleMapsUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-primary text-white w-100 mt-2"><i class="bi bi-geo-alt-fill"></i> Google Maps</a>` : ''}
+          ${isSafeHttpUrl(r.googleMapsUrl) ? `<a href="${escapeHtml(r.googleMapsUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-primary text-white w-100 mt-2"><i class="bi bi-geo-alt-fill"></i> Google Maps</a>` : ''}
         </div>`);
       this.restaurantMarkers.push(marker);
     });
@@ -111,7 +112,7 @@ export class MapManager {
           <p class="mb-2">${escapeHtml(r.location)}</p>
           ${dist ? `<p class="mb-2"><i class="bi bi-pin-map"></i> <strong>${dist}</strong></p>` : ''}
           <div class="alert alert-info mb-2 py-2">❤️ <strong>À tester</strong>${r.reason ? `<br><small>${escapeHtml(r.reason)}</small>` : ''}</div>
-          ${r.googleMapsUrl ? `<a href="${escapeHtml(r.googleMapsUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-success text-white w-100 mt-2"><i class="bi bi-geo-alt-fill"></i> Google Maps</a>` : ''}
+          ${isSafeHttpUrl(r.googleMapsUrl) ? `<a href="${escapeHtml(r.googleMapsUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-success text-white w-100 mt-2"><i class="bi bi-geo-alt-fill"></i> Google Maps</a>` : ''}
         </div>`);
       this.restaurantMarkers.push(marker);
     });

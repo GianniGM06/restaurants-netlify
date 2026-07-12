@@ -3,7 +3,7 @@ import './api.js';
 import './auth.js';
 import './map.js';
 import './filters.js';
-import { escapeHtml } from './ui.js';
+import { escapeHtml, isSafeHttpUrl } from './ui.js';
 import { calculateRating } from './rating.js';
 import { initTheme } from './theme.js';
 import * as Cards from './cards.js';
@@ -466,7 +466,8 @@ class RestaurantApp {
             if (restaurant?.coordinates) this.showOnMap(restaurant.coordinates.lat, restaurant.coordinates.lng);
             break;
           case 'open-maps':
-            if (restaurant?.googleMapsUrl) window.open(restaurant.googleMapsUrl, '_blank', 'noopener');
+            // Seules les URLs http(s) sont ouvertes (défense en profondeur contre javascript:)
+            if (isSafeHttpUrl(restaurant?.googleMapsUrl)) window.open(restaurant.googleMapsUrl, '_blank', 'noopener');
             break;
           case 'add': this.openAddModal(type); break;
           case 'clear-filters': this.clearAllFilters(); break;
@@ -652,12 +653,14 @@ if (nearbyBtn) {
     document.getElementById("wishlist-count").textContent =
       this.data.wishlist.length;
 
-    if (this.data.tested.length > 0) {
+    // Moyenne calculée sur les seuls restaurants notés (garde anti-crash)
+    const rated = this.data.tested.filter((r) => r.ratings);
+    if (rated.length > 0) {
       const avgRating =
-        this.data.tested.reduce(
-          (sum, r) => sum + this.calculateRating(r.ratings),
+        rated.reduce(
+          (sum, r) => sum + this.calculateRating(r.ratings, r.winesNotTested),
           0
-        ) / this.data.tested.length;
+        ) / rated.length;
       document.getElementById("avg-rating").textContent = avgRating.toFixed(1);
     } else {
       document.getElementById("avg-rating").textContent = "--";
@@ -839,6 +842,19 @@ updatePhotoComment(index, comment) {
     const type = document.getElementById("restaurant-type").value;
     const isEdit = !!id;
 
+    // Validation des URLs saisies : uniquement http(s) (le type="url" du
+    // navigateur accepte javascript: — on verrouille ici et côté serveur)
+    const urlFields = [
+      ["Lien Google Maps", document.getElementById("restaurant-google-maps").value],
+      ["Photo (URL)", document.getElementById("restaurant-photo").value],
+      ...this.currentPhotos.map((p, i) => [`Photo ${i + 1} de la galerie`, p.url]),
+    ];
+    for (const [label, value] of urlFields) {
+      if (value && value.trim() !== "" && !isSafeHttpUrl(value)) {
+        this.showToast(`${label} : l'URL doit commencer par http:// ou https://`, "warning");
+        return;
+      }
+    }
 
     // Traiter le type de cuisine
     const cuisineInput = document.getElementById("restaurant-cuisine").value;

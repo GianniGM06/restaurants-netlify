@@ -1,5 +1,10 @@
 /* ===== MODULE UI — Toast, skeleton, étoiles, statut sync ===== */
 
+/** Seules les URLs http(s) sont acceptées dans les liens/photos (bloque javascript: etc.). */
+export function isSafeHttpUrl(value) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value.trim());
+}
+
 export function escapeHtml(str) {
   if (str == null) return '';
   return String(str)
@@ -104,5 +109,5 @@ export function setSyncWarning(statusBadge, active) {
 }
 
 if (typeof window !== 'undefined') {
-  window.UI = { escapeHtml, showToast, generateStars, showLoadingSkeleton, updateSyncStatus, setSyncWarning };
+  window.UI = { escapeHtml, isSafeHttpUrl, showToast, generateStars, showLoadingSkeleton, updateSyncStatus, setSyncWarning };
 }

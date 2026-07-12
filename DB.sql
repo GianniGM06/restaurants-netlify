@@ -26,6 +26,9 @@ CREATE TABLE restaurants (
     longitude DECIMAL(11, 8),
     price_range VARCHAR(10) DEFAULT '€€',
     photo_url TEXT,
+    -- Galerie de photos [{url, comment}] — colonne historiquement ajoutée par
+    -- ALTER manuel en prod, intégrée au CREATE le 2026-07-12 (resync schéma/code)
+    photos JSONB DEFAULT '[]'::jsonb,
     comment TEXT,
     status VARCHAR(20) CHECK (status IN ('tested', 'wishlist')) NOT NULL,
     reason TEXT, -- Pour wishlist uniquement

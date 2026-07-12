@@ -6,6 +6,11 @@
 const { getPool } = require('./lib/db.js');
 const { authenticateRequest, writeCorsHeaders } = require('./lib/auth.js');
 
+/** Seules les URLs http(s) sont acceptées (bloque javascript:, data:, etc.). */
+function isSafeHttpUrl(value) {
+  return value == null || value === '' || (typeof value === 'string' && /^https?:\/\//i.test(value.trim()));
+}
+
 function validate(body) {
   if (!body || typeof body !== 'object') return { error: 'Payload JSON invalide' };
   const { status, restaurant: r } = body;
@@ -17,8 +22,15 @@ function validate(body) {
     return { error: `ID manquant ou invalide pour "${r.name || '?'}"` };
   }
   if (!r.name || typeof r.name !== 'string') return { error: `Nom manquant pour le restaurant id=${r.id}` };
-  if (!r.type || typeof r.type !== 'string') return { error: `Type de cuisine manquant pour "${r.name}"` };
-  if (status === 'tested' && r.ratings) {
+  if (!r.type || typeof r.type !== 'string' || !r.type.trim()) {
+    return { error: `Type de cuisine manquant pour "${r.name}"` };
+  }
+
+  // Un restaurant testé sans notes casserait l'affichage : notes obligatoires
+  if (status === 'tested') {
+    if (!r.ratings || typeof r.ratings !== 'object') {
+      return { error: `Notes manquantes pour "${r.name}" (un restaurant testé doit être noté)` };
+    }
     for (const key of ['plats', 'accueil', 'lieu']) {
       const v = r.ratings[key];
       if (typeof v !== 'number' || v < 1 || v > 5) {
@@ -30,6 +42,14 @@ function validate(body) {
       return { error: `Note "vins" invalide pour "${r.name}"` };
     }
   }
+
+  // URLs : http(s) uniquement
+  if (!isSafeHttpUrl(r.googleMapsUrl)) return { error: `Lien Google Maps invalide pour "${r.name}" (http/https uniquement)` };
+  if (!isSafeHttpUrl(r.photo)) return { error: `URL de photo invalide pour "${r.name}" (http/https uniquement)` };
+  for (const p of r.photos || []) {
+    if (!isSafeHttpUrl(p?.url)) return { error: `URL de photo de galerie invalide pour "${r.name}" (http/https uniquement)` };
+  }
+
   return { status, restaurant: r };
 }
 
@@ -58,6 +78,8 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ success: false, message: validation.error }) };
   }
   const { status, restaurant: r } = validation;
+  // Normalisation serveur : évite les doublons de casse ("Français" vs "français")
+  const typeName = r.type.trim().toLowerCase();
 
   const client = getPool();
 
@@ -67,9 +89,9 @@ exports.handler = async (event) => {
       // 1) Type de cuisine (créé au besoin)
       await client.query(
         'INSERT INTO cuisine_types (name) VALUES ($1) ON CONFLICT (name) DO NOTHING',
-        [r.type]
+        [typeName]
       );
-      const cuisineResult = await client.query('SELECT id FROM cuisine_types WHERE name = $1', [r.type]);
+      const cuisineResult = await client.query('SELECT id FROM cuisine_types WHERE name = $1', [typeName]);
       const cuisineTypeId = cuisineResult.rows[0].id;
 
       // 2) Upsert du restaurant

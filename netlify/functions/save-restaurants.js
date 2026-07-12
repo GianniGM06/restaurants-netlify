@@ -21,6 +21,9 @@ function validatePayload(requestData) {
     ...wishlist.map((r) => ({ ...r, status: 'wishlist' })),
   ];
 
+  const isSafeHttpUrl = (v) =>
+    v == null || v === '' || (typeof v === 'string' && /^https?:\/\//i.test(v.trim()));
+
   for (const r of all) {
     if (r.id == null || Number.isNaN(Number(r.id))) {
       return { error: `ID manquant ou invalide pour "${r.name || '?'}"` };
@@ -28,9 +31,15 @@ function validatePayload(requestData) {
     if (!r.name || typeof r.name !== 'string') {
       return { error: `Nom manquant pour le restaurant id=${r.id}` };
     }
-    if (!r.type || typeof r.type !== 'string') {
+    if (!r.type || typeof r.type !== 'string' || !r.type.trim()) {
       return { error: `Type de cuisine manquant pour "${r.name}"` };
     }
+    if (!isSafeHttpUrl(r.googleMapsUrl) || !isSafeHttpUrl(r.photo) ||
+        (r.photos || []).some((p) => !isSafeHttpUrl(p?.url))) {
+      return { error: `URL invalide pour "${r.name}" (http/https uniquement)` };
+    }
+    // Normalisation serveur du type (cohérente avec upsert-restaurant)
+    r.type = r.type.trim().toLowerCase();
   }
 
   const ids = all.map((r) => String(r.id));
@@ -74,6 +83,19 @@ exports.handler = async (event, context) => {
       statusCode: 400,
       headers,
       body: JSON.stringify({ success: false, message: 'Corps de requête JSON invalide' })
+    };
+  }
+
+  // Garde-fou : ce endpoint REMPLACE toute la base (supprime ce qui n'est pas
+  // dans le payload). Le flag explicite évite un écrasement accidentel.
+  if (requestData?.confirmReplace !== true) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({
+        success: false,
+        message: 'Opération en bloc destructive : ajoutez "confirmReplace": true au payload pour remplacer l\'intégralité des données'
+      })
     };
   }
 

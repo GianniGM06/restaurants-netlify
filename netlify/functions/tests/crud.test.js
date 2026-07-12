@@ -33,6 +33,7 @@ const cjsRequire = createRequire(import.meta.url);
 cjsRequire('../lib/db.js').setPoolForTesting(fakePool);
 const { handler: upsertHandler } = cjsRequire('../upsert-restaurant.js');
 const { handler: deleteHandler } = cjsRequire('../delete-restaurant.js');
+const { handler: saveHandler } = cjsRequire('../save-restaurants.js');
 
 function post(body, token = 'ghp_valid') {
   return {
@@ -106,6 +107,36 @@ describe('upsert-restaurant — validation', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('400 si un testé n\'a pas de notes (protège le rendu)', async () => {
+    const bad = structuredClone(validTested);
+    delete bad.restaurant.ratings;
+    const res = await upsertHandler(post(bad));
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).message).toMatch(/not/i);
+  });
+
+  it('400 si une URL n\'est pas http(s)', async () => {
+    const bad = structuredClone(validTested);
+    bad.restaurant.googleMapsUrl = 'javascript:alert(1)';
+    const res = await upsertHandler(post(bad));
+    expect(res.statusCode).toBe(400);
+
+    const bad2 = structuredClone(validTested);
+    bad2.restaurant.photos = [{ url: 'data:text/html,x', comment: '' }];
+    const res2 = await upsertHandler(post(bad2));
+    expect(res2.statusCode).toBe(400);
+  });
+
+  it('les URLs https passent et le type est normalisé en minuscules', async () => {
+    const payload = structuredClone(validTested);
+    payload.restaurant.type = '  Français ';
+    payload.restaurant.googleMapsUrl = 'https://maps.google.com/?q=test';
+    const res = await upsertHandler(post(payload));
+    expect(res.statusCode).toBe(200);
+    const cuisineInsert = queries.find((q) => /INSERT INTO cuisine_types/.test(q.sql));
+    expect(cuisineInsert.params).toEqual(['français']);
+  });
+
   it('405 sur GET', async () => {
     const res = await upsertHandler({ httpMethod: 'GET', headers: {} });
     expect(res.statusCode).toBe(405);
@@ -160,6 +191,23 @@ describe('upsert-restaurant — écriture', () => {
     expect(res.statusCode).toBe(500);
     expect(queries.map((q) => q.sql)).toContain('ROLLBACK');
     expect(queries.map((q) => q.sql)).not.toContain('COMMIT');
+  });
+});
+
+// ===== save-restaurants (bulk, destructif) =====
+
+describe('save-restaurants — garde-fou confirmReplace', () => {
+  it('400 sans le flag confirmReplace (full-replace refusé)', async () => {
+    const res = await saveHandler(post({ tested: [], wishlist: [] }));
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).message).toMatch(/confirmReplace/);
+    expect(queries).toHaveLength(0); // aucune requête SQL exécutée
+  });
+
+  it('200 avec confirmReplace: true', async () => {
+    const res = await saveHandler(post({ confirmReplace: true, tested: [], wishlist: [] }));
+    expect(res.statusCode).toBe(200);
+    expect(queries.map((q) => q.sql)).toContain('COMMIT');
   });
 });
 

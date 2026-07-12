@@ -10,7 +10,10 @@ const DEFAULT_TESTED_PHOTO = 'https://images.unsplash.com/photo-1517248135467-4c
 const DEFAULT_WISHLIST_PHOTO = 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=250&fit=crop';
 
 export function createTestedCard(restaurant, isEditMode) {
-  const rating = calculateRating(restaurant.ratings, restaurant.winesNotTested);
+  // Garde : un testé sans notes (possible via l'API) ne doit jamais casser le rendu
+  const rating = restaurant.ratings
+    ? calculateRating(restaurant.ratings, restaurant.winesNotTested)
+    : null;
   const photo = restaurant.photo || restaurant.photos?.[0]?.url || DEFAULT_TESTED_PHOTO;
 
   const editButtons = isEditMode ? `
@@ -55,6 +58,11 @@ export function createTestedCard(restaurant, isEditMode) {
 
                     ${photoGallery}
 
+                    ${rating === null ? `
+                    <div class="final-rating" id="final-rating-${escapeHtml(restaurant.id)}">
+                        <div class="rating-simple"><strong>Non noté</strong></div>
+                    </div>
+                    ` : `
                     <div class="final-rating" id="final-rating-${escapeHtml(restaurant.id)}">
                         <div class="rating-simple">
                             <strong>${rating.toFixed(1)}/5</strong> ${generateStars(rating)}
@@ -86,6 +94,7 @@ export function createTestedCard(restaurant, isEditMode) {
                             </button>
                         </div>
                     </div>
+                    `}
 
                     ${restaurant.comment ? `<blockquote class="blockquote-footer mt-3">"${escapeHtml(restaurant.comment)}"</blockquote>` : ""}
 
