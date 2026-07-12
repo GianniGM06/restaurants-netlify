@@ -979,6 +979,26 @@ input, select, textarea {
 }
 
 .app-toast .bi { margin-top: 1px; }
+
+/* Bouton d'action dans un toast (ex : Annuler une suppression) */
+.app-toast-action {
+    margin-left: auto;
+    flex-shrink: 0;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface-alt);
+    color: var(--color-accent);
+    font-weight: 600;
+    font-size: var(--font-size-xs);
+    padding: 0.25rem 0.7rem;
+    border-radius: var(--radius-full);
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.app-toast-action:hover {
+    background: var(--color-accent);
+    color: #fff;
+    border-color: var(--color-accent);
+}
 .app-toast-success .bi { color: var(--color-success); }
 .app-toast-danger .bi  { color: var(--color-danger); }
 .app-toast-warning .bi { color: var(--color-warning); }

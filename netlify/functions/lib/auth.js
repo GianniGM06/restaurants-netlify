@@ -6,6 +6,17 @@ const ALLOWED_USERS = (process.env.ALLOWED_GITHUB_USERS || 'giannigm06')
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
+// Cache en mémoire de module (survit entre invocations chaudes) : évite un
+// aller-retour api.github.com (~200 ms) à CHAQUE écriture. Seuls les succès
+// sont mis en cache ; une révocation de token est donc effective en < 5 min.
+const AUTH_CACHE_TTL_MS = 5 * 60 * 1000;
+const authCache = new Map(); // token -> { result, expiresAt }
+
+/** Réservé aux tests. */
+function clearAuthCacheForTesting() {
+  authCache.clear();
+}
+
 async function authenticateRequest(event) {
   const authHeader = event.headers.authorization || event.headers.Authorization || '';
   const token = authHeader.replace(/^(Bearer|token)\s+/i, '').trim();
@@ -13,6 +24,12 @@ async function authenticateRequest(event) {
   if (!token) {
     return { ok: false, status: 401, message: 'Authentification requise : token GitHub manquant' };
   }
+
+  const cached = authCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.result;
+  }
+  authCache.delete(token);
 
   const response = await fetch('https://api.github.com/user', {
     headers: {
@@ -31,7 +48,9 @@ async function authenticateRequest(event) {
     return { ok: false, status: 403, message: `Utilisateur "${user.login}" non autorisé en écriture` };
   }
 
-  return { ok: true, login: user.login };
+  const result = { ok: true, login: user.login };
+  authCache.set(token, { result, expiresAt: Date.now() + AUTH_CACHE_TTL_MS });
+  return result;
 }
 
 /* En-têtes CORS communs aux endpoints d'écriture (origine du site uniquement). */
@@ -44,4 +63,4 @@ function writeCorsHeaders() {
   };
 }
 
-module.exports = { authenticateRequest, writeCorsHeaders };
+module.exports = { authenticateRequest, writeCorsHeaders, clearAuthCacheForTesting };

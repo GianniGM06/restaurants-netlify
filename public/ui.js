@@ -33,7 +33,7 @@ function toastContainer() {
   return container;
 }
 
-export function showToast(message, type = 'info', duration = 3500) {
+export function showToast(message, type = 'info', duration = 3500, action = undefined) {
   try {
     // Design sobre : on retire les emojis de tête hérités des anciens messages,
     // l'icône est portée par le type
@@ -43,12 +43,26 @@ export function showToast(message, type = 'info', duration = 3500) {
     toast.className = `app-toast app-toast-${type}`;
     toast.innerHTML = `<i class="bi ${TOAST_ICONS[type] || TOAST_ICONS.info}" aria-hidden="true"></i><span></span>`;
     toast.querySelector('span').textContent = text;
+
+    // Action optionnelle (ex : « Annuler » après une suppression)
+    if (action && typeof action.onClick === 'function') {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'app-toast-action';
+      btn.textContent = action.label || 'Annuler';
+      btn.addEventListener('click', () => {
+        toast.remove();
+        action.onClick();
+      });
+      toast.appendChild(btn);
+    }
+
     toastContainer().appendChild(toast);
 
     setTimeout(() => {
       toast.classList.add('is-leaving');
       setTimeout(() => toast.remove(), 250);
-    }, duration);
+    }, duration ?? 3500);
 
     const announcer = document.getElementById('sr-announcer');
     if (announcer) {

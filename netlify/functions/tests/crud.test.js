@@ -57,6 +57,9 @@ beforeEach(() => {
   deleteRowCount = 1;
   failOnRestaurantUpsert = false;
   githubResponse = { ok: true, json: async () => ({ login: 'GianniGM06' }) };
+  // Le cache d'auth (TTL 5 min) fausserait les tests qui réutilisent le même token
+  cjsRequire('../lib/auth.js').clearAuthCacheForTesting();
+  fetch.mockClear();
 });
 
 // ===== Auth =====
@@ -84,6 +87,19 @@ describe('authentification des écritures', () => {
   it('l\'allowlist est insensible à la casse', async () => {
     const res = await upsertHandler(post(validTested));
     expect(res.statusCode).toBe(200);
+  });
+
+  it('met en cache les authentifications réussies (1 seul appel GitHub)', async () => {
+    await upsertHandler(post(validTested));
+    await deleteHandler(post({ id: 42 }));
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('ne met PAS en cache les échecs d\'authentification', async () => {
+    githubResponse = { ok: false };
+    await upsertHandler(post(validTested));
+    await upsertHandler(post(validTested));
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -399,6 +399,16 @@ class RestaurantApp {
         "danger"
       );
       setTimeout(() => this.updateSyncStatus(), 5000);
+
+      // Resynchroniser l'affichage avec l'état RÉEL du serveur : sans ça, un
+      // ajout/transfert échoué resterait affiché comme s'il était sauvegardé
+      try {
+        await this.loadData();
+        this.render();
+      } catch {
+        // Serveur injoignable : on garde l'affichage local, le badge
+        // « Non synchronisé » signale déjà la divergence
+      }
       return false;
     }
   }
@@ -438,6 +448,34 @@ class RestaurantApp {
     document.getElementById("save-restaurant-btn")?.addEventListener("click", () => this.saveRestaurant());
     document.getElementById("lightbox-prev")?.addEventListener("click", () => this.previousPhoto());
     document.getElementById("lightbox-next")?.addEventListener("click", () => this.nextPhoto());
+    document.getElementById("export-btn")?.addEventListener("click", () => this.exportData());
+  }
+
+  /* ===== EXPORT / SAUVEGARDE =====
+     La base Neon est l'unique copie des données : cet export JSON est le filet
+     de sécurité. Restauration : POST /api/save-restaurants avec le contenu du
+     fichier + "confirmReplace": true (remplace l'intégralité des données). */
+  exportData() {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      // "confirmReplace" pré-rempli : le fichier est directement ré-importable
+      confirmReplace: true,
+      tested: this.data.tested,
+      wishlist: this.data.wishlist,
+      cuisineTypes: this.generateCuisineTypesObject(),
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `restos-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+
+    this.showToast(`Sauvegarde téléchargée (${this.data.tested.length + this.data.wishlist.length} restaurants) — conservez-la en lieu sûr`, 'success');
   }
 
   /* ===== DÉLÉGATION D'ÉVÉNEMENTS =====
@@ -1294,16 +1332,25 @@ async confirmDelete() {
     // Supprimer immédiatement de la liste locale
     this.data[type] = this.data[type].filter(r => r.id != id);
     this.render();
-    this.showToast(`✅ "${restaurant.name}" supprimé !`, 'success');
-    
-    // Suppression unitaire côté serveur ; en cas d'échec, on resynchronise
+
+    // Suppression unitaire côté serveur (en cas d'échec, persistOperation
+    // resynchronise l'affichage avec l'état réel)
     const ok = await this.persistDelete(id);
-    if (!ok) {
-        try {
-            await this.loadData();
-            this.render();
-        } catch { /* hors ligne : l'état "Non synchronisé" est déjà affiché */ }
+    if (ok) {
+        // Filet de sécurité : 6 secondes pour annuler une suppression accidentelle
+        this.showToast(`« ${restaurant.name} » supprimé`, 'success', 6000, {
+            label: 'Annuler',
+            onClick: () => this.restoreDeleted(restaurant, type),
+        });
     }
+}
+
+/** Restaure un restaurant supprimé (bouton Annuler du toast). */
+async restoreDeleted(restaurant, type) {
+    this.data[type].push(restaurant);
+    this.render();
+    const ok = await this.persistOne(restaurant, type);
+    if (ok) this.showToast(`« ${restaurant.name} » restauré`, 'success');
 }
 
   /* ===== GESTION CUISINE TYPES ===== */
@@ -1377,7 +1424,9 @@ async confirmDelete() {
 
   generateStars(rating) { return window.UI.generateStars(rating); }
 
-  showToast(message, type = 'info') { window.UI.showToast(message, type); }
+  showToast(message, type = 'info', duration = undefined, action = undefined) {
+    window.UI.showToast(message, type, duration, action);
+  }
 
   /* ===== NOUVELLES MÉTHODES POUR LES FILTRES ===== */
 
