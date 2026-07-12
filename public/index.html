@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Restos - Gianni</title>
+    <meta name="description" content="Carnet gastronomique personnel : restaurants testés et notés, wishlist, carte interactive.">
+    <meta property="og:title" content="Les Restos de Gianni">
+    <meta property="og:description" content="Carnet gastronomique personnel : restaurants testés et notés, wishlist, carte interactive.">
+    <meta property="og:type" content="website">
     <!-- App personnelle : pas d'indexation par les moteurs de recherche (décision D7) -->
     <meta name="robots" content="noindex">
     <!-- Favicon SVG inline (l'ancien PNG référencé n'existait pas : 404 à chaque visite) -->
@@ -147,7 +151,7 @@
                 <div class="search-field">
                     <i class="bi bi-search" aria-hidden="true"></i>
                     <input type="search" class="form-control" id="search-input"
-                           placeholder="Rechercher un restaurant…" autocomplete="off">
+                           placeholder="Rechercher (nom, commentaire, adresse)…" autocomplete="off">
                 </div>
             </div>
 
@@ -187,6 +191,16 @@
                 </div>
             </div>
 
+            <!-- Filtre Note minimale -->
+            <div class="filter-group">
+                <label class="filter-label" id="rating-chips-label">Note min.</label>
+                <div class="price-checkboxes" id="rating-chips" role="group" aria-labelledby="rating-chips-label">
+                    <button type="button" class="price-checkbox rating-chip" data-min-rating="3">3+</button>
+                    <button type="button" class="price-checkbox rating-chip" data-min-rating="4">4+</button>
+                    <button type="button" class="price-checkbox rating-chip" data-min-rating="4.5">4.5+</button>
+                </div>
+            </div>
+
             <!-- Filtre Localisation -->
             <div class="filter-group">
                 <label class="filter-label">Lieu</label>
@@ -207,6 +221,7 @@
                     <option value="recent" selected>Plus récents</option>
                     <option value="rating">Meilleure note</option>
                     <option value="name">Nom A→Z</option>
+                    <option value="distance" disabled title="Localisez-vous d'abord (onglet Carte)">Distance</option>
                 </select>
                 <span class="results-count" id="results-count">-- restaurants</span>
                 <button class="clear-filters-btn" id="clear-filters-btn" disabled>
@@ -259,6 +274,27 @@
             <i class="bi bi-geo-alt-fill"></i> Me localiser
         </button>
     </div>
+
+    <!-- Autour de moi : position détectée (modifiable) + restos les plus proches -->
+    <div class="nearby-panel" id="nearby-panel">
+        <div class="nearby-position">
+            <label class="filter-label" for="nearby-address">Autour de</label>
+            <div class="search-field nearby-address-field">
+                <i class="bi bi-geo-alt" aria-hidden="true"></i>
+                <input type="search" class="form-control" id="nearby-address"
+                       placeholder="Me localiser, ou saisir une adresse puis Entrée…" autocomplete="off">
+            </div>
+        </div>
+        <p class="nearby-hint text-muted" id="nearby-status">
+            Cliquez sur « Me localiser » ou saisissez une adresse pour classer vos restos du plus proche au plus lointain.
+        </p>
+        <ol class="nearby-list" id="nearby-list"></ol>
+        <p class="nearby-missing text-muted" id="nearby-missing" hidden></p>
+        <button type="button" class="btn btn-outline-secondary btn-sm edit-only" id="geocode-missing-btn" style="display: none;">
+            <i class="bi bi-geo" aria-hidden="true"></i> Géocoder les adresses manquantes
+        </button>
+    </div>
+
     <div id="map"></div>
 </div>
             </div>
@@ -327,12 +363,9 @@
     </div>
 </div>
 
-<div class="row mb-3">
-    <div class="col-md-12">
-        <label class="form-label">Photo (URL)</label>
-        <input type="url" class="form-control" id="restaurant-photo" placeholder="https://...">
-    </div>
-</div>
+<!-- Le champ « Photo (URL) » isolé a fusionné avec la galerie :
+     la première photo de la galerie sert de photo de card -->
+<input type="hidden" id="restaurant-photo" value="">
 
                         <!-- Section notes (restaurants testés) -->
                         <div id="ratings-section" style="display: none;">
@@ -442,7 +475,9 @@
                                 
                                 <div class="alert alert-info mb-0">
                                     <strong>Formule :</strong><br>
-                                    Note finale = (Plats × 2 + Vins × 1.5 + Accueil × 1.5 + Lieu × 1) ÷ 6
+                                    Note finale = (Plats × 2 + Vins × 1.5 + Accueil × 1.5 + Lieu × 1) ÷ 6<br>
+                                    <small>Si les vins n'ont pas été testés, le critère est simplement retiré :
+                                    (Plats × 2 + Accueil × 1.5 + Lieu × 1) ÷ 4.5 — la note n'est pas pénalisée.</small>
                                 </div>
                             </div>
                         </div>

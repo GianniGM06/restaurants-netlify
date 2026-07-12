@@ -119,6 +119,7 @@ exports.handler = async (event, context) => {
         tested.push(restaurant);
       } else if (row.status === 'wishlist') {
         restaurant.reason = row.reason;
+        restaurant.photos = row.photos || []; // la galerie existe aussi pour la wishlist
         wishlist.push(restaurant);
       }
     });

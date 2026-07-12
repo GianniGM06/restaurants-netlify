@@ -39,6 +39,19 @@ export function persistRestaurants(payload, token) {
   return postJson('/save-restaurants', payload, token);
 }
 
+/** Coordonnées -> adresse lisible (Nominatim). Retourne null en cas d'échec. */
+export async function reverseGeocode(lat, lng) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&format=json&zoom=17&accept-language=fr`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) throw new Error('Erreur géocodage inverse');
+    const data = await response.json();
+    return data?.display_name || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function geocodeAddress(address) {
   if (!address || !address.trim()) return null;
   try {
@@ -57,5 +70,5 @@ export async function geocodeAddress(address) {
 }
 
 if (typeof window !== 'undefined') {
-  window.Api = { fetchRestaurants, upsertRestaurant, deleteRestaurant, persistRestaurants, geocodeAddress };
+  window.Api = { fetchRestaurants, upsertRestaurant, deleteRestaurant, persistRestaurants, geocodeAddress, reverseGeocode };
 }

@@ -37,7 +37,8 @@ export async function loadLeaflet() {
   });
 }
 
-export function calculateDistance(lat1, lon1, lat2, lon2) {
+/** Distance haversine en kilomètres (nombre brut, pour tris et calculs). */
+export function distanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -45,18 +46,49 @@ export function calculateDistance(lat1, lon1, lat2, lon2) {
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return dist >= 1 ? `${dist.toFixed(1)} km` : `${(dist * 1000).toFixed(0)} m`;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Formatage lisible : "350 m" ou "2.4 km". */
+export function formatDistance(km) {
+  return km >= 1 ? `${km.toFixed(1)} km` : `${(km * 1000).toFixed(0)} m`;
+}
+
+export function calculateDistance(lat1, lon1, lat2, lon2) {
+  return formatDistance(distanceKm(lat1, lon1, lat2, lon2));
 }
 
 export class MapManager {
-  constructor({ generateStars, showToast }) {
+  constructor({ generateStars, showToast, onPositionChange }) {
     this.map = null;
     this.userMarker = null;
     this.userPosition = null;
     this.restaurantMarkers = [];
     this.generateStars = generateStars;
     this.showToast = showToast;
+    // Notifie l'app quand la position de référence change (géoloc OU adresse saisie)
+    this.onPositionChange = onPositionChange;
+  }
+
+  /** Pose/déplace la position de référence (marqueur rouge) et recentre la carte. */
+  setReferencePosition(lat, lng, zoom = 14) {
+    this.userPosition = { lat, lng };
+    if (!this.map) return;
+    if (this.userMarker) this.map.removeLayer(this.userMarker);
+    this.userMarker = L.marker([lat, lng], { icon: makeIcon(ICON_RED) }).addTo(this.map);
+    this.userMarker.bindPopup('<div style="min-width:150px;text-align:center"><strong>Position de référence</strong></div>');
+    this.map.setView([lat, lng], zoom);
+  }
+
+  /** Centre la carte sur un restaurant et ouvre son popup. */
+  focusOn(lat, lng) {
+    if (!this.map) return;
+    this.map.setView([lat, lng], 16);
+    const marker = this.restaurantMarkers.find((mk) => {
+      const p = mk.getLatLng();
+      return Math.abs(p.lat - lat) < 1e-9 && Math.abs(p.lng - lng) < 1e-9;
+    });
+    marker?.openPopup();
   }
 
   async init(filteredData) {
@@ -127,14 +159,11 @@ export class MapManager {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude: lat, longitude: lng } = position.coords;
-        this.userPosition = { lat, lng };
         if (!this.map) await this.init(filteredData);
-        if (this.userMarker) this.map.removeLayer(this.userMarker);
-        this.userMarker = L.marker([lat, lng], { icon: makeIcon(ICON_RED) }).addTo(this.map);
-        this.userMarker.bindPopup('<div style="min-width:150px;text-align:center"><strong>📍 Vous êtes ici</strong></div>');
-        this.map.setView([lat, lng], 14);
+        this.setReferencePosition(lat, lng);
         this.updateMarkers(filteredData);
         this.showToast('✅ Position trouvée !', 'success');
+        this.onPositionChange?.({ lat, lng }, { fromGeolocation: true });
       },
       (error) => {
         const msgs = {
@@ -151,5 +180,5 @@ export class MapManager {
 }
 
 if (typeof window !== 'undefined') {
-  window.MapModule = { MapManager, loadLeaflet, calculateDistance };
+  window.MapModule = { MapManager, loadLeaflet, calculateDistance, distanceKm, formatDistance };
 }

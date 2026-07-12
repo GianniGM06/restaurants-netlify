@@ -830,6 +830,108 @@ input, select, textarea {
     border: 1px solid var(--color-border);
 }
 
+/* ===== AUTOUR DE MOI ===== */
+.nearby-panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-3);
+}
+
+.nearby-position {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.nearby-address-field {
+    flex: 1 1 260px;
+}
+
+.nearby-hint {
+    font-size: var(--font-size-sm);
+    margin: var(--space-2) 0 0;
+}
+
+.nearby-list {
+    list-style: none;
+    margin: var(--space-2) 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    counter-reset: nearby;
+}
+
+.nearby-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 0.45rem 0.6rem;
+    color: var(--color-text);
+    counter-increment: nearby;
+}
+
+.nearby-item::before {
+    content: counter(nearby);
+    color: var(--color-text-faint);
+    font-size: var(--font-size-xs);
+    min-width: 1.2em;
+}
+
+.nearby-item:hover,
+.nearby-item:focus-visible {
+    background: var(--color-surface-alt);
+}
+
+.nearby-name {
+    font-weight: 600;
+}
+
+.nearby-meta {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nearby-distance {
+    color: var(--color-accent);
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+
+.nearby-missing {
+    font-size: var(--font-size-xs);
+    margin: var(--space-2) 0 0;
+}
+
+#geocode-missing-btn {
+    margin-top: var(--space-2);
+}
+
+/* ===== DEEP-LINK : surbrillance de la fiche ciblée ===== */
+@keyframes card-highlight-pulse {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent); }
+    100% { box-shadow: 0 0 0 14px transparent; }
+}
+
+.card-highlight .restaurant-card {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    animation: card-highlight-pulse 1.2s ease-out 2;
+}
+
 /* ===== MODALS ===== */
 .modal-content {
     --bs-modal-bg: var(--color-surface);

@@ -7,6 +7,8 @@ import { escapeHtml, isSafeHttpUrl } from './ui.js';
 import { calculateRating } from './rating.js';
 import { initTheme } from './theme.js';
 import * as Cards from './cards.js';
+import { nearestRestaurants, countWithoutCoordinates } from './nearby.js';
+import { formatDistance } from './map.js';
 
 /* Image de repli locale (data URI) — remplace via.placeholder.com, service mort */
 const FALLBACK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='100%25' height='100%25' fill='%23e9ecef'/%3E%3Ctext x='50%25' y='50%25' font-family='sans-serif' font-size='11' fill='%236c757d' text-anchor='middle' dy='.35em'%3EImage indisponible%3C/text%3E%3C/svg%3E";
@@ -41,7 +43,11 @@ class RestaurantApp {
     this.mapManager = new window.MapModule.MapManager({
       generateStars: (r) => window.UI.generateStars(r),
       showToast: (m, t) => window.UI.showToast(m, t),
+      onPositionChange: (pos, meta) => this.onReferencePosition(pos, meta),
     });
+
+    // Position de référence « Autour de moi » (géoloc ou adresse saisie)
+    this.referencePosition = null;
 
     // État de l'application
     this.data = {
@@ -85,6 +91,7 @@ class RestaurantApp {
 
       this.render();
       this.updateSyncStatus();
+      this.handleDeepLink(); // ouvrir la fiche si l'URL contient #resto-<id>
     } catch (error) {
       console.error("Erreur initialisation:", error);
       // État d'erreur honnête : pas de fausses données de démo
@@ -247,8 +254,14 @@ class RestaurantApp {
                     <div class="modal-body">
                         <div class="mb-3">
                             <label class="form-label">🔑 Token d'accès personnel GitHub</label>
-                            <input type="password" class="form-control" id="github-token-input" 
-                                   placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+                            <input type="password" class="form-control" id="github-token-input"
+                                   placeholder="github_pat_xxxxxxxx">
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="github-remember" checked>
+                                <label class="form-check-label" for="github-remember">
+                                    Rester connecté sur cet appareil
+                                </label>
+                            </div>
                             <div class="form-text">
                                 <strong>Comment obtenir un token :</strong><br>
                                 1. Allez sur <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHub Settings → Developer settings → Fine-grained tokens</a><br>
@@ -311,7 +324,8 @@ class RestaurantApp {
     try {
       this.showToast("🔄 Connexion en cours...", "info");
 
-      await this.githubAuth.authenticate(token);
+      const remember = document.getElementById("github-remember")?.checked ?? true;
+      await this.githubAuth.authenticate(token, remember);
 
       this.isEditMode = true;
       this.updateAuthUI(true);
@@ -440,6 +454,203 @@ class RestaurantApp {
     this.setupBadgeEvents();
     this.setupPhotoInputEvents();
     this.setupStaticButtons();
+    this.setupNearbyEvents();
+
+    // Deep-links #resto-<id> : à l'ouverture et à chaque changement de hash
+    window.addEventListener("hashchange", () => this.handleDeepLink());
+  }
+
+  /* ===== AUTOUR DE MOI ===== */
+
+  /** La position de référence a changé (géolocalisation ou adresse saisie). */
+  onReferencePosition(pos, { fromGeolocation = false, label = "" } = {}) {
+    this.referencePosition = pos;
+
+    // Le tri « Distance » devient disponible
+    const distanceOption = document.querySelector('#sort-select option[value="distance"]');
+    if (distanceOption) {
+      distanceOption.disabled = false;
+      distanceOption.title = "";
+    }
+
+    const addressInput = document.getElementById("nearby-address");
+    if (label && addressInput) addressInput.value = label;
+
+    this.updateNearbyPanel();
+    if (this.sortKey === "distance") this.applyFilters();
+
+    // Géoloc -> afficher l'adresse détectée, MODIFIABLE par l'utilisateur
+    if (fromGeolocation && addressInput) {
+      window.Api.reverseGeocode(pos.lat, pos.lng).then((address) => {
+        // Ne pas écraser une adresse que l'utilisateur aurait saisie entre-temps
+        if (address && this.referencePosition === pos) addressInput.value = address;
+      });
+    }
+  }
+
+  setupNearbyEvents() {
+    // Adresse saisie manuellement (Entrée) -> géocodage -> nouvelle référence
+    const addressInput = document.getElementById("nearby-address");
+    if (addressInput) {
+      addressInput.addEventListener("keydown", async (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        const query = addressInput.value.trim();
+        if (!query) return;
+
+        this.showToast("Recherche de l'adresse…", "info");
+        const coords = await window.Api.geocodeAddress(query);
+        if (!coords) {
+          this.showToast("Adresse introuvable — essayez d'être plus précis", "warning");
+          return;
+        }
+        await this.initMap();
+        this.mapManager.setReferencePosition(coords.lat, coords.lng);
+        this.mapManager.updateMarkers(this.filteredData);
+        this.onReferencePosition(coords, { label: query });
+        this.showToast("Position mise à jour", "success");
+      });
+    }
+
+    // Clic sur un resto de la liste -> centre la carte + ouvre son popup
+    const list = document.getElementById("nearby-list");
+    if (list) {
+      list.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-nearby-id]");
+        if (!btn) return;
+        const id = btn.dataset.nearbyId;
+        const restaurant = [...this.data.tested, ...this.data.wishlist].find((r) => r.id == id);
+        if (restaurant?.coordinates) {
+          this.mapManager.focusOn(restaurant.coordinates.lat, restaurant.coordinates.lng);
+        }
+      });
+    }
+
+    // Géocodage en lot des fiches sans position (mode édition)
+    document.getElementById("geocode-missing-btn")?.addEventListener("click", () => this.geocodeMissing());
+  }
+
+  /** Met à jour la liste des restos les plus proches (respecte les filtres actifs). */
+  updateNearbyPanel() {
+    const list = document.getElementById("nearby-list");
+    const status = document.getElementById("nearby-status");
+    const missing = document.getElementById("nearby-missing");
+    if (!list || !status || !missing) return;
+
+    const visible = [...this.filteredData.tested, ...this.filteredData.wishlist];
+
+    if (!this.referencePosition) {
+      list.innerHTML = "";
+      status.hidden = false;
+      missing.hidden = true;
+      return;
+    }
+
+    const nearest = nearestRestaurants(this.referencePosition, visible, 8);
+    const wishlistIds = new Set(this.data.wishlist.map((r) => String(r.id)));
+
+    if (nearest.length === 0) {
+      list.innerHTML = "";
+      status.hidden = false;
+      status.textContent = "Aucun restaurant positionné ne correspond aux filtres actifs.";
+    } else {
+      status.hidden = true;
+      list.innerHTML = nearest.map(({ restaurant: r, km }) => `
+        <li>
+            <button type="button" class="nearby-item" data-nearby-id="${escapeHtml(r.id)}">
+                <span class="nearby-name">${escapeHtml(r.name)}</span>
+                <span class="nearby-meta">${escapeHtml(r.type)} · ${wishlistIds.has(String(r.id)) ? "wishlist" : "testé"}</span>
+                <span class="nearby-distance">${escapeHtml(formatDistance(km))}</span>
+            </button>
+        </li>`).join("");
+    }
+
+    const nbMissing = countWithoutCoordinates(visible);
+    missing.hidden = nbMissing === 0;
+    if (nbMissing > 0) {
+      missing.textContent = `${nbMissing} restaurant${nbMissing > 1 ? "s" : ""} sans position n'apparai${nbMissing > 1 ? "ssent" : "t"} ni ici ni sur la carte.`;
+    }
+  }
+
+  /** Géocode en lot les fiches qui ont une adresse mais pas de coordonnées (1 req/s Nominatim). */
+  async geocodeMissing() {
+    if (!this.checkEditPermission()) return;
+
+    const targets = [
+      ...this.data.tested.map((r) => ({ r, type: "tested" })),
+      ...this.data.wishlist.map((r) => ({ r, type: "wishlist" })),
+    ].filter(({ r }) => !r.coordinates && r.address && r.address.trim());
+
+    const withoutAddress = countWithoutCoordinates([...this.data.tested, ...this.data.wishlist]) - targets.length;
+
+    if (targets.length === 0) {
+      this.showToast(
+        withoutAddress > 0
+          ? `${withoutAddress} fiche(s) sans position n'ont pas d'adresse — ajoutez-la via Modifier`
+          : "Toutes les fiches sont déjà positionnées",
+        "info"
+      );
+      return;
+    }
+
+    this.showToast(`Géocodage de ${targets.length} adresse(s)… (~${targets.length} s)`, "info");
+    let found = 0;
+    for (const { r, type } of targets) {
+      const coords = await window.Api.geocodeAddress(r.address);
+      if (coords) {
+        r.coordinates = coords;
+        found++;
+        await this.persistOne(r, type);
+      }
+      // Politique d'usage Nominatim : 1 requête par seconde maximum
+      await new Promise((res) => setTimeout(res, 1100));
+    }
+
+    this.render();
+    this.updateMapMarkers();
+    this.updateNearbyPanel();
+    this.showToast(
+      `${found}/${targets.length} adresse(s) positionnée(s)` +
+      (withoutAddress > 0 ? ` — ${withoutAddress} fiche(s) restent sans adresse` : ""),
+      found > 0 ? "success" : "warning"
+    );
+  }
+
+  /* ===== DEEP-LINK #resto-<id> ===== */
+
+  handleDeepLink() {
+    const match = window.location.hash.match(/^#resto-(\d+)$/);
+    if (!match) return;
+    const id = match[1];
+
+    const inTested = this.data.tested.some((r) => r.id == id);
+    const inWishlist = this.data.wishlist.some((r) => r.id == id);
+    if (!inTested && !inWishlist) return;
+    const type = inTested ? "tested" : "wishlist";
+
+    // Si la card est masquée par les filtres actifs, on les efface
+    if (!this.filteredData[type].some((r) => r.id == id)) {
+      this.clearAllFilters();
+    }
+
+    document.getElementById(`${type}-tab`)?.click();
+
+    // Laisser l'onglet s'afficher avant de scroller
+    setTimeout(() => {
+      const node = document.querySelector(`#${type}-grid [data-restaurant-id="${id}"]`);
+      if (!node) return;
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+      node.classList.add("card-highlight");
+      setTimeout(() => node.classList.remove("card-highlight"), 2500);
+    }, 250);
+  }
+
+  copyRestaurantLink(id) {
+    const url = `${window.location.origin}${window.location.pathname}#resto-${id}`;
+    navigator.clipboard.writeText(url).then(
+      () => this.showToast("Lien de la fiche copié", "success"),
+      () => this.showToast(url, "info", 8000)
+    );
   }
 
   // Boutons statiques de index.html (aucun onclick inline : compatibilité CSP)
@@ -511,6 +722,7 @@ class RestaurantApp {
           case 'clear-filters': this.clearAllFilters(); break;
           case 'github-config': this.openGitHubConfig(); break;
           case 'retry': this.retryLoad(); break;
+          case 'copy-link': if (id != null) this.copyRestaurantLink(id); break;
         }
       });
     });
@@ -790,9 +1002,8 @@ nextPhoto() {
     document.getElementById("wishlist-section").style.display =
       type === "wishlist" ? "block" : "none";
 
-    // Section photos visible seulement pour les restaurants testés
-document.getElementById("photos-section").style.display =
-    type === "tested" ? "block" : "none";
+    // Galerie photos disponible pour les deux types
+document.getElementById("photos-section").style.display = "block";
 
 // Réinitialiser les photos
 this.currentPhotos = [];
@@ -926,22 +1137,24 @@ if (address && address.trim() !== '') {
       return;
     }
 
+    const existing = isEdit ? this.data[type].find((r) => r.id == id) : null;
+
     const restaurantData = {
   id: restaurantId,
   name: document.getElementById("restaurant-name").value,
   type: cuisineType,
   location: document.getElementById("restaurant-location").value,
   address: document.getElementById("restaurant-address").value,
-  coordinates: coordinates,
+  // Sans nouveau géocodage, on CONSERVE les coordonnées existantes
+  // (une édition sans adresse ne doit pas retirer un resto de la carte)
+  coordinates: coordinates || existing?.coordinates || null,
   priceRange: document.getElementById("restaurant-price").value,
   photo: document.getElementById("restaurant-photo").value,
   googleMapsUrl: document.getElementById("restaurant-google-maps").value,
   comment: document.getElementById("restaurant-comment").value,
-  photos: type === "tested" ? this.currentPhotos.filter(p => p.url) : [],
-  dateAdded: isEdit
-    ? this.data[type].find((r) => r.id == id)?.dateAdded ||
-      new Date().toISOString().split("T")[0]
-    : new Date().toISOString().split("T")[0],
+  // Galerie disponible pour les deux types (la 1re photo sert de photo de card)
+  photos: this.currentPhotos.filter(p => p.url),
+  dateAdded: existing?.dateAdded || new Date().toISOString().split("T")[0],
 };
 
 
@@ -1039,10 +1252,6 @@ if (address && address.trim() !== '') {
           checkbox.dispatchEvent(new Event('change'));
       }
       
-      // Charger les photos
-      this.currentPhotos = restaurant.photos || [];
-      this.renderPhotoInputs();
-
       // Mettre à jour les affichages des sliders (vins peut être null : "non testés")
       document.getElementById("plats-value").textContent =
         ratings.plats.toFixed(1);
@@ -1059,6 +1268,10 @@ if (address && address.trim() !== '') {
         restaurant.reason || "";
     }
 
+    // Charger la galerie (les deux types)
+    this.currentPhotos = restaurant.photos || [];
+    this.renderPhotoInputs();
+
     // Ouvrir le modal
     document.getElementById(
       "modal-title"
@@ -1067,8 +1280,8 @@ if (address && address.trim() !== '') {
       type === "tested" ? "block" : "none";
     document.getElementById("wishlist-section").style.display =
       type === "wishlist" ? "block" : "none";
-    document.getElementById("photos-section").style.display =
-      type === "tested" ? "block" : "none";  
+    // Galerie photos disponible pour les deux types
+    document.getElementById("photos-section").style.display = "block";
 
     const modal = new bootstrap.Modal(
       document.getElementById("restaurant-modal")
@@ -1588,6 +1801,22 @@ if (locationMenu) {
         });
     }
 
+    // Note minimale (chips exclusives : re-cliquer désactive)
+    const ratingChips = document.getElementById('rating-chips');
+    if (ratingChips) {
+        ratingChips.addEventListener('click', (e) => {
+            const chip = e.target.closest('.rating-chip');
+            if (!chip) return;
+            const value = parseFloat(chip.dataset.minRating);
+            const isActive = this.filters.minRating === value;
+            this.filters.minRating = isActive ? null : value;
+            ratingChips.querySelectorAll('.rating-chip').forEach((c) => {
+                c.classList.toggle('active', !isActive && c === chip);
+            });
+            this.applyFilters();
+        });
+    }
+
     // Bouton effacer filtres
     const clearBtn = document.getElementById('clear-filters-btn');
     if (clearBtn) {
@@ -1619,7 +1848,8 @@ applyFilters() {
     ['tested', 'wishlist'].forEach(type => {
         this.filteredData[type] = window.Filters.sortRestaurants(
             window.Filters.applyFilters(this.data[type], this.filters),
-            this.sortKey
+            this.sortKey,
+            this.referencePosition
         );
     });
     
@@ -1630,6 +1860,7 @@ applyFilters() {
     if (this.mapManager.map) {
         this.updateMapMarkers();
     }
+    this.updateNearbyPanel();
 }
 
 /**
@@ -1846,12 +2077,16 @@ clearAllFilters() {
         cuisines: [],
         prices: [],
         locations: [],
-        query: ''
+        query: '',
+        minRating: null
     };
 
     // Reset du champ de recherche
     const searchInput = document.getElementById('search-input');
     if (searchInput) searchInput.value = '';
+
+    // Reset des chips de note minimale
+    document.querySelectorAll('#rating-chips .rating-chip').forEach((c) => c.classList.remove('active'));
 
 
     // Reset des dropdowns cuisine

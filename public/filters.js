@@ -4,16 +4,18 @@
  */
 
 import { calculateRating } from './rating.js';
+import { distanceKm } from './map.js';
 
 /**
- * @typedef {{ cuisines: string[], prices: string[], locations: string[], query?: string }} Filters
+ * @typedef {{ cuisines: string[], prices: string[], locations: string[], query?: string, minRating?: number|null }} Filters
  * @typedef {{ name?: string, type: string, priceRange?: string, location: string }} Restaurant
  */
 
 /**
  * Filtre un tableau de restaurants selon les critères actifs.
  * Retourne tous les restaurants si un critère est vide (pas de filtre actif).
- * `query` est une recherche plein-texte insensible à la casse sur le nom.
+ * `query` cherche dans le nom, le commentaire et l'adresse (insensible à la casse).
+ * `minRating` exclut les non-notés (wishlist incluse) sous le seuil.
  *
  * @param {Restaurant[]} restaurants
  * @param {Filters} filters
@@ -21,6 +23,7 @@ import { calculateRating } from './rating.js';
  */
 export function applyFilters(restaurants, filters) {
   const query = (filters.query || '').trim().toLowerCase();
+  const minRating = filters.minRating || null;
 
   return restaurants.filter(r => {
     const cuisineMatch = filters.cuisines.length === 0 ||
@@ -32,10 +35,13 @@ export function applyFilters(restaurants, filters) {
     const locationMatch = filters.locations.length === 0 ||
       filters.locations.includes(r.location);
 
-    const queryMatch = query === '' ||
-      (r.name || '').toLowerCase().includes(query);
+    const haystack = `${r.name || ''} ${r.comment || ''} ${r.address || ''}`.toLowerCase();
+    const queryMatch = query === '' || haystack.includes(query);
 
-    return cuisineMatch && priceMatch && locationMatch && queryMatch;
+    const ratingMatch = minRating === null ||
+      (r.ratings && calculateRating(r.ratings, r.winesNotTested) >= minRating);
+
+    return cuisineMatch && priceMatch && locationMatch && queryMatch && ratingMatch;
   });
 }
 
@@ -74,7 +80,8 @@ export function hasActiveFilters(filters) {
   return filters.cuisines.length > 0 ||
     filters.prices.length > 0 ||
     filters.locations.length > 0 ||
-    (filters.query || '').trim() !== '';
+    (filters.query || '').trim() !== '' ||
+    (filters.minRating || null) !== null;
 }
 
 /**
@@ -83,20 +90,23 @@ export function hasActiveFilters(filters) {
  * @returns {Filters}
  */
 export function emptyFilters() {
-  return { cuisines: [], prices: [], locations: [], query: '' };
+  return { cuisines: [], prices: [], locations: [], query: '', minRating: null };
 }
 
 /**
  * Trie un tableau de restaurants (retourne un NOUVEAU tableau).
  *
  * Clés : 'recent' (date d'ajout décroissante), 'rating' (note décroissante,
- * les entrées sans notes — wishlist — passent en fin), 'name' (A→Z).
+ * les entrées sans notes — wishlist — passent en fin), 'name' (A→Z),
+ * 'distance' (croissante depuis `position`, sans-coordonnées en fin ;
+ * sans position fournie, retombe sur 'recent').
  *
  * @param {Restaurant[]} restaurants
- * @param {'recent'|'rating'|'name'} sortKey
+ * @param {'recent'|'rating'|'name'|'distance'} sortKey
+ * @param {{lat: number, lng: number}|null} [position]
  * @returns {Restaurant[]}
  */
-export function sortRestaurants(restaurants, sortKey = 'recent') {
+export function sortRestaurants(restaurants, sortKey = 'recent', position = null) {
   const byDateDesc = (a, b) => {
     const da = Date.parse(a.dateAdded) || 0;
     const db = Date.parse(b.dateAdded) || 0;
@@ -117,6 +127,22 @@ export function sortRestaurants(restaurants, sortKey = 'recent') {
     case 'name':
       sorted.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
       break;
+    case 'distance': {
+      if (!position) {
+        sorted.sort(byDateDesc);
+        break;
+      }
+      const dist = (r) => r.coordinates
+        ? distanceKm(position.lat, position.lng, r.coordinates.lat, r.coordinates.lng)
+        : Infinity;
+      sorted.sort((a, b) => {
+        const da = dist(a);
+        const db = dist(b);
+        if (da !== db) return da - db;
+        return byDateDesc(a, b);
+      });
+      break;
+    }
     case 'recent':
     default:
       sorted.sort(byDateDesc);

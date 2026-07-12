@@ -94,6 +94,34 @@ describe('applyFilters', () => {
     expect(applyFilters(noName, { ...emptyFilters(), query: 'x' })).toHaveLength(0);
     expect(applyFilters(noName, emptyFilters())).toHaveLength(1);
   });
+
+  it('recherche aussi dans le commentaire et l\'adresse', () => {
+    const items = [
+      { id: 1, name: 'A', type: 't', location: 'l', comment: 'Superbe terrasse ombragée' },
+      { id: 2, name: 'B', type: 't', location: 'l', address: '12 rue de la Roquette' },
+      { id: 3, name: 'C', type: 't', location: 'l' },
+    ];
+    expect(applyFilters(items, { ...emptyFilters(), query: 'terrasse' }).map(r => r.id)).toEqual([1]);
+    expect(applyFilters(items, { ...emptyFilters(), query: 'roquette' }).map(r => r.id)).toEqual([2]);
+  });
+
+  it('filtre par note minimale (les non-notés sont exclus)', () => {
+    const items = [
+      { id: 1, type: 't', location: 'l', ratings: { plats: 5, vins: 5, accueil: 5, lieu: 5 } },   // 5.0
+      { id: 2, type: 't', location: 'l', ratings: { plats: 3, vins: 3, accueil: 3, lieu: 3 } },   // 3.0
+      { id: 3, type: 't', location: 'l' },                                                        // wishlist
+    ];
+    expect(applyFilters(items, { ...emptyFilters(), minRating: 4 }).map(r => r.id)).toEqual([1]);
+    expect(applyFilters(items, { ...emptyFilters(), minRating: 3 }).map(r => r.id)).toEqual([1, 2]);
+    expect(applyFilters(items, emptyFilters())).toHaveLength(3);
+  });
+
+  it('minRating respecte la formule "vins non testés"', () => {
+    // (5×2 + 5×1.5 + 5×1) / 4.5 = 5.0 malgré vins null
+    const items = [{ id: 1, type: 't', location: 'l', winesNotTested: true,
+      ratings: { plats: 5, vins: null, accueil: 5, lieu: 5 } }];
+    expect(applyFilters(items, { ...emptyFilters(), minRating: 4.5 })).toHaveLength(1);
+  });
 });
 
 // ===== addFilter =====
@@ -206,6 +234,24 @@ describe('sortRestaurants', () => {
       { id: 200, dateAdded: '2024-01-01' },
     ];
     expect(sortRestaurants(sameDay, 'recent').map(r => r.id)).toEqual([200, 100]);
+  });
+
+  it('distance : croissante depuis la position, sans-coordonnées en fin', () => {
+    const pos = { lat: 48.8520, lng: 2.3390 };
+    const geo = [
+      { id: 1, dateAdded: '2024-01-01', coordinates: { lat: 48.8867, lng: 2.3431 } }, // loin
+      { id: 2, dateAdded: '2024-01-02', coordinates: { lat: 48.8530, lng: 2.3400 } }, // proche
+      { id: 3, dateAdded: '2024-01-03' },                                             // sans coords
+    ];
+    expect(sortRestaurants(geo, 'distance', pos).map(r => r.id)).toEqual([2, 1, 3]);
+  });
+
+  it('distance sans position fournie : retombe sur recent', () => {
+    const geo = [
+      { id: 1, dateAdded: '2024-01-01' },
+      { id: 2, dateAdded: '2024-06-01' },
+    ];
+    expect(sortRestaurants(geo, 'distance').map(r => r.id)).toEqual([2, 1]);
   });
 });
 

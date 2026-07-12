@@ -105,6 +105,9 @@ export function createTestedCard(restaurant, isEditMode) {
                             <i class="bi bi-geo-alt" aria-hidden="true"></i> Carte
                         </button>
                         ` : ""}
+                        <button class="btn btn-outline-secondary btn-action" data-action="copy-link" title="Copier le lien de cette fiche">
+                            <i class="bi bi-link-45deg" aria-hidden="true"></i> Lien
+                        </button>
                     </div>
                 </div>
             </div>
@@ -165,6 +168,9 @@ export function createWishlistCard(restaurant, isEditMode) {
                             <i class="bi bi-geo-alt" aria-hidden="true"></i> Carte
                         </button>
                         ` : ""}
+                        <button class="btn btn-outline-secondary btn-action" data-action="copy-link" title="Copier le lien de cette fiche">
+                            <i class="bi bi-link-45deg" aria-hidden="true"></i> Lien
+                        </button>
                     </div>
                 </div>
             </div>

@@ -1,14 +1,21 @@
-/* ===== SERVICE D'AUTHENTIFICATION GITHUB ===== */
-// P2.10 : token en sessionStorage (périmètre onglet, pas persisté entre sessions)
+/* ===== SERVICE D'AUTHENTIFICATION GITHUB =====
+   Token en sessionStorage (périmètre onglet) par défaut, ou en localStorage
+   si « Rester connecté » est coché (décision D3 — le CSP strict limite le
+   risque d'exfiltration). */
 
 export class GitHubAuthService {
   constructor() {
-    this.token = sessionStorage.getItem('github-token') || null;
+    this.token = localStorage.getItem('github-token') || sessionStorage.getItem('github-token') || null;
     this.isAuthenticated = false;
     this.userInfo = null;
   }
 
-  async authenticate(token) {
+  /**
+   * @param {string} token
+   * @param {boolean} [remember] true = localStorage (persistant), false =
+   *   sessionStorage ; undefined = conserver l'emplacement actuel (revalidation)
+   */
+  async authenticate(token, remember = undefined) {
     if (!token || !token.trim()) throw new Error('Token GitHub requis');
 
     const response = await fetch('https://api.github.com/user', {
@@ -27,7 +34,17 @@ export class GitHubAuthService {
     this.token = token.trim();
     this.userInfo = userData;
     this.isAuthenticated = true;
-    sessionStorage.setItem('github-token', this.token);
+
+    const useLocal = remember === undefined
+      ? localStorage.getItem('github-token') !== null
+      : remember;
+    if (useLocal) {
+      localStorage.setItem('github-token', this.token);
+      sessionStorage.removeItem('github-token');
+    } else {
+      sessionStorage.setItem('github-token', this.token);
+      localStorage.removeItem('github-token');
+    }
     return userData;
   }
 
@@ -36,6 +53,7 @@ export class GitHubAuthService {
     this.userInfo = null;
     this.isAuthenticated = false;
     sessionStorage.removeItem('github-token');
+    localStorage.removeItem('github-token');
   }
 
   async checkStoredToken() {
